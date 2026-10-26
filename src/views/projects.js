@@ -110,6 +110,7 @@ export const PROJECT_TABS = [
   ['env', 'Variables'],
   ['logs', 'Logs'],
   ['settings', 'Escalado y ajustes'],
+  ['metrics', 'Métricas y costos'],
   ['webhook', 'Webhook'],
 ];
 

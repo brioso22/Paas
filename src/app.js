@@ -12,6 +12,7 @@ import { projectRoutes } from './routes/projects.js';
 import { deploymentRoutes } from './routes/deployments.js';
 import { manageRoutes } from './routes/manage.js';
 import { webhookRoutes } from './routes/webhooks.js';
+import { metricsRoutes } from './routes/metrics.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const SESSION_COOKIE = 'paas.sid';
@@ -107,6 +108,7 @@ export function createApp(ctx) {
   app.use(projectRoutes(ctx));
   app.use(deploymentRoutes(ctx));
   app.use(manageRoutes(ctx));
+  app.use(metricsRoutes(ctx));
 
   app.use((req, res) => {
     if ((req.get('accept') || '').includes('application/json')) return res.status(404).json({ error: 'No encontrado' });
