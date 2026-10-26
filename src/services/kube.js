@@ -2,12 +2,16 @@ import { renderTenantManifests, renderEnvSecret } from './templates.js';
 
 const REQUEST_TIMEOUT = '--request-timeout=15s';
 
+// Datos de conexión que no son secretos. DB_NAME suele coincidir con el nombre del proyecto:
+// redactarlo convertiría "tenant-python" en "tenant-***" en todos los logs.
+const PUBLIC_ENV_KEYS = new Set(['DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_USER', 'PORT']);
+
 /**
  * Valores de variables a redactar en logs. Los cortos (p. ej. "app", "5432") se omiten:
  * redactarlos rompería palabras como "apply", y nunca viajan en argumentos de todos modos.
  */
 export function redactableValues(envMap) {
-  return [...envMap.values()].filter((x) => x.length >= 6);
+  return [...envMap].filter(([k, x]) => !PUBLIC_ENV_KEYS.has(k) && x.length >= 6).map(([, x]) => x);
 }
 
 /** Selector de los pods de la release. Asume las etiquetas estándar de `helm create`. */

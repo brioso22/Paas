@@ -71,7 +71,7 @@ export function createTls(ctx) {
     if (fs.existsSync(paths.caKey) && fs.existsSync(paths.caCert)) return false;
     await openssl(
       [
-        'req', '-x509', '-new', '-nodes', '-newkey', 'rsa:2048', '-sha256', '-days', String(CA_DAYS),
+        'req', '-quiet', '-x509', '-new', '-nodes', '-newkey', 'rsa:2048', '-sha256', '-days', String(CA_DAYS),
         '-keyout', paths.caKey, '-out', paths.caCert, '-subj', '/CN=Lisec PaaS CA',
         '-addext', 'basicConstraints=critical,CA:TRUE', '-addext', 'keyUsage=critical,keyCertSign,cRLSign',
       ],
@@ -112,7 +112,7 @@ export function createTls(ctx) {
         const csr = wildcard ? path.join(paths.dir, 'wildcard.csr') : `${base}.csr`;
         const ext = wildcard ? path.join(paths.dir, 'wildcard.ext') : `${base}.ext`;
         fs.writeFileSync(ext, certExtensions(sans), { mode: 0o600 });
-        await openssl(['req', '-new', '-nodes', '-newkey', 'rsa:2048', '-keyout', key, '-out', csr, '-subj', `/CN=${sans[0]}`], execOpts);
+        await openssl(['req', '-quiet', '-new', '-nodes', '-newkey', 'rsa:2048', '-keyout', key, '-out', csr, '-subj', `/CN=${sans[0]}`], execOpts);
         await openssl(
           [
             'x509', '-req', '-in', csr, '-CA', paths.caCert, '-CAkey', paths.caKey,
