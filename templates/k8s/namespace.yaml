@@ -1,0 +1,8 @@
+# Namespace del proyecto. Las etiquetas permiten a monitoring/NetworkPolicies identificar tenants.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: "{{ namespace }}"
+  labels:
+    paas/tenant: "true"
+    paas/project: "{{ project }}"

@@ -3,6 +3,9 @@ import path from 'node:path';
 import { openDb } from './db.js';
 import { createCipher } from './crypto.js';
 import { createExec } from './lib/exec.js';
+import { createKube } from './services/kube.js';
+import { createProjectStore } from './services/projects.js';
+import { createLifecycle } from './services/lifecycle.js';
 
 export function createLogger(prefix = 'paas-panel') {
   const ts = () => new Date().toISOString();
@@ -29,13 +32,14 @@ export function createContext(config, { logger = createLogger(), exec, now = () 
     db: openDb(dbFile || path.join(config.dataDir, 'paas.db')),
     cipher: createCipher(config.secretsKey),
     exec: exec || createExec({ dryRun: config.dryRun, logger }),
-    routes: [],
-    rawRoutes: [],
     onClose: (fn) => closers.push(fn),
     close() {
       for (const fn of closers.splice(0).reverse()) fn();
       ctx.db.close();
     },
   };
+  ctx.kube = createKube(ctx);
+  ctx.projects = createProjectStore(ctx);
+  ctx.lifecycle = createLifecycle(ctx);
   return ctx;
 }

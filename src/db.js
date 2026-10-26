@@ -36,6 +36,47 @@ export const MIGRATIONS = [
       );
     `,
   },
+  {
+    version: 2,
+    name: 'proyectos y variables de entorno',
+    up: `
+      CREATE TABLE projects (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        namespace TEXT NOT NULL UNIQUE,
+        source TEXT NOT NULL CHECK (source IN ('zip', 'git')),
+        repo_url TEXT,
+        branch TEXT,
+        port INTEGER NOT NULL CHECK (port BETWEEN 1 AND 65535),
+        replicas INTEGER NOT NULL DEFAULT 1,
+        autoscaling_enabled INTEGER NOT NULL DEFAULT 0,
+        autoscaling_min INTEGER NOT NULL DEFAULT 1,
+        autoscaling_max INTEGER NOT NULL DEFAULT 3,
+        autoscaling_cpu INTEGER NOT NULL DEFAULT 80,
+        cpu_request TEXT NOT NULL,
+        cpu_limit TEXT NOT NULL,
+        memory_request TEXT NOT NULL,
+        memory_limit TEXT NOT NULL,
+        git_token_enc TEXT,
+        webhook_secret_enc TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'created',
+        current_tag TEXT,
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        CHECK (source = 'zip' OR (repo_url IS NOT NULL AND branch IS NOT NULL))
+      );
+
+      CREATE TABLE env_vars (
+        id INTEGER PRIMARY KEY,
+        project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        key TEXT NOT NULL,
+        value_enc TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE (project_id, key)
+      );
+    `,
+  },
 ];
 
 export function openDb(file, migrations = MIGRATIONS) {

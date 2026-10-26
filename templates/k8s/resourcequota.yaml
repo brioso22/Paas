@@ -1,0 +1,19 @@
+# Techo total del namespace. Se calcula como (réplicas máximas + 1 de surge) x límites por contenedor.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: "{{ project }}-quota"
+  namespace: "{{ namespace }}"
+  labels:
+    paas/project: "{{ project }}"
+spec:
+  hard:
+    requests.cpu: "{{ quotaRequestsCpu }}"
+    requests.memory: "{{ quotaRequestsMemory }}"
+    limits.cpu: "{{ quotaLimitsCpu }}"
+    limits.memory: "{{ quotaLimitsMemory }}"
+    pods: "{{ quotaPods }}"
+    persistentvolumeclaims: "{{ quotaPvcCount }}"
+    requests.storage: "{{ quotaStorage }}"
+    services.nodeports: "0"
+    services.loadbalancers: "0"

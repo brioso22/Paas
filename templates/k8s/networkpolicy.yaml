@@ -1,0 +1,24 @@
+# Aislamiento de ingreso: solo el propio namespace, monitoring (Prometheus) e ingress-nginx.
+# Cualquier otro namespace (incluidos otros tenants) queda bloqueado. El egreso no se restringe.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: "{{ project }}-isolation"
+  namespace: "{{ namespace }}"
+  labels:
+    paas/project: "{{ project }}"
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector: {}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx

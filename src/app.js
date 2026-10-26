@@ -4,11 +4,11 @@ import express from 'express';
 import session from 'express-session';
 import helmet from 'helmet';
 import { SqliteSessionStore } from './lib/sessionStore.js';
-import { csrfProtection, loadUser, takeFlash, requireAuth } from './middleware/security.js';
+import { csrfProtection, loadUser, takeFlash } from './middleware/security.js';
 import { layout, errorPage } from './views/layout.js';
-import { html } from './lib/html.js';
 import { authRoutes } from './routes/auth.js';
 import { healthRoutes } from './routes/health.js';
+import { projectRoutes } from './routes/projects.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const SESSION_COOKIE = 'paas.sid';
@@ -48,8 +48,6 @@ export function createApp(ctx) {
 
   app.use('/static', express.static(path.join(__dirname, '..', 'public'), { maxAge: '1h', index: false }));
 
-  // Los webhooks necesitan el cuerpo crudo para verificar la firma HMAC: se montan antes de los parsers.
-  for (const mount of ctx.rawRoutes || []) app.use(mount(ctx));
   app.use(healthRoutes(ctx));
 
   app.use(express.urlencoded({ extended: false, limit: '256kb', parameterLimit: 1000 }));
@@ -101,13 +99,7 @@ export function createApp(ctx) {
   app.use(csrfProtection());
 
   app.use(authRoutes(ctx));
-  for (const mount of ctx.routes || []) app.use(mount(ctx));
-
-  if (!(ctx.routes || []).length) {
-    app.get('/', requireAuth, (req, res) =>
-      res.page('Proyectos', html`<h1>Proyectos</h1><p class="muted">Aún no hay proyectos.</p>`, { active: 'projects' }),
-    );
-  }
+  app.use(projectRoutes(ctx));
 
   app.use((req, res) => {
     if ((req.get('accept') || '').includes('application/json')) return res.status(404).json({ error: 'No encontrado' });

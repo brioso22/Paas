@@ -1,0 +1,23 @@
+# Valores por defecto y máximos por contenedor dentro del namespace.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: "{{ project }}-limits"
+  namespace: "{{ namespace }}"
+  labels:
+    paas/project: "{{ project }}"
+spec:
+  limits:
+    - type: Container
+      default:
+        cpu: "{{ cpuLimit }}"
+        memory: "{{ memoryLimit }}"
+      defaultRequest:
+        cpu: "{{ cpuRequest }}"
+        memory: "{{ memoryRequest }}"
+      max:
+        cpu: "{{ maxCpu }}"
+        memory: "{{ maxMemory }}"
+    - type: PersistentVolumeClaim
+      max:
+        storage: "{{ maxPvcSize }}"
