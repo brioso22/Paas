@@ -64,11 +64,15 @@ spec:
             # Subdirectorio: la raíz del volumen puede traer lost+found y initdb la rechaza.
             - name: PGDATA
               value: /var/lib/postgresql/data/pgdata
+          # -h 127.0.0.1: durante initdb el servidor temporal solo escucha en el socket,
+          # así no se marca listo antes de tiempo. initdb tarda ~30 s con poca CPU.
           readinessProbe:
             exec:
-              command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]
-            initialDelaySeconds: 5
-            periodSeconds: 10
+              command: ["sh", "-c", "pg_isready -h 127.0.0.1 -p 5432 -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]
+            initialDelaySeconds: 20
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 6
           resources:
             requests:
               cpu: "{{ cpuRequest }}"

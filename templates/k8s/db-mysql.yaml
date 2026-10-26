@@ -63,11 +63,15 @@ spec:
           envFrom:
             - secretRef:
                 name: "{{ resource }}-credentials"
+          # Comprueba con el usuario de la app (por TCP: el servidor temporal de la
+          # inicialización usa --skip-networking). La contraseña va por MYSQL_PWD, no en argv.
           readinessProbe:
             exec:
-              command: ["sh", "-c", "mysqladmin ping -h 127.0.0.1 --silent"]
-            initialDelaySeconds: 15
+              command: ["sh", "-c", "MYSQL_PWD=\"$MYSQL_PASSWORD\" mysql -h 127.0.0.1 -P 3306 -u \"$MYSQL_USER\" -e 'SELECT 1' \"$MYSQL_DATABASE\" >/dev/null"]
+            initialDelaySeconds: 30
             periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 12
           resources:
             requests:
               cpu: "{{ cpuRequest }}"
