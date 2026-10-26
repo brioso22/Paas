@@ -7,9 +7,10 @@ export const DB_SIZES = [1, 2, 5];
 export const DB_ENV_KEYS = ['DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_USER', 'DB_PASSWORD', 'DATABASE_URL'];
 const DB_USER = 'app';
 
+// MySQL: con 150m su inicialización tardaba ~4 min; en memoria no pasa de ~240Mi al arrancar.
 export const DB_ENGINES = Object.freeze({
   postgres: { label: 'PostgreSQL 16', template: 'db-postgres.yaml', port: 5432, scheme: 'postgresql', cpu_limit: '100m', memory_limit: '256Mi' },
-  mysql: { label: 'MySQL 8.4', template: 'db-mysql.yaml', port: 3306, scheme: 'mysql', cpu_limit: '150m', memory_limit: '384Mi' },
+  mysql: { label: 'MySQL 8.4', template: 'db-mysql.yaml', port: 3306, scheme: 'mysql', cpu_limit: '500m', memory_limit: '384Mi' },
 });
 
 const half = (millis) => `${Math.max(10, Math.floor(millis / 2))}`;
