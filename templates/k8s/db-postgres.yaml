@@ -1,0 +1,92 @@
+# Base de datos PostgreSQL administrada. La contraseña llega generada por el servidor
+# y el manifiesto viaja solo por stdin a kubectl.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: "{{ resource }}-credentials"
+  namespace: "{{ namespace }}"
+  labels:
+    paas/project: "{{ project }}"
+    paas/db: "{{ db }}"
+type: Opaque
+stringData:
+  POSTGRES_DB: "{{ dbName }}"
+  POSTGRES_USER: "{{ dbUser }}"
+  POSTGRES_PASSWORD: "{{ password }}"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: "{{ resource }}"
+  namespace: "{{ namespace }}"
+  labels:
+    paas/project: "{{ project }}"
+    paas/db: "{{ db }}"
+spec:
+  type: ClusterIP
+  selector:
+    paas/db: "{{ db }}"
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: "{{ resource }}"
+  namespace: "{{ namespace }}"
+  labels:
+    paas/project: "{{ project }}"
+    paas/db: "{{ db }}"
+spec:
+  serviceName: "{{ resource }}"
+  replicas: 1
+  selector:
+    matchLabels:
+      paas/db: "{{ db }}"
+  template:
+    metadata:
+      labels:
+        paas/project: "{{ project }}"
+        paas/db: "{{ db }}"
+        app.kubernetes.io/name: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+          envFrom:
+            - secretRef:
+                name: "{{ resource }}-credentials"
+          env:
+            # Subdirectorio: la raíz del volumen puede traer lost+found y initdb la rechaza.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: "{{ cpuRequest }}"
+              memory: "{{ memoryRequest }}"
+            limits:
+              cpu: "{{ cpuLimit }}"
+              memory: "{{ memoryLimit }}"
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          paas/project: "{{ project }}"
+          paas/db: "{{ db }}"
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: "{{ size }}"

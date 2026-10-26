@@ -1,0 +1,91 @@
+# Base de datos MySQL administrada. La contraseña llega generada por el servidor
+# y el manifiesto viaja solo por stdin a kubectl.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: "{{ resource }}-credentials"
+  namespace: "{{ namespace }}"
+  labels:
+    paas/project: "{{ project }}"
+    paas/db: "{{ db }}"
+type: Opaque
+stringData:
+  MYSQL_DATABASE: "{{ dbName }}"
+  MYSQL_USER: "{{ dbUser }}"
+  MYSQL_PASSWORD: "{{ password }}"
+  MYSQL_ROOT_PASSWORD: "{{ rootPassword }}"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: "{{ resource }}"
+  namespace: "{{ namespace }}"
+  labels:
+    paas/project: "{{ project }}"
+    paas/db: "{{ db }}"
+spec:
+  type: ClusterIP
+  selector:
+    paas/db: "{{ db }}"
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: 3306
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: "{{ resource }}"
+  namespace: "{{ namespace }}"
+  labels:
+    paas/project: "{{ project }}"
+    paas/db: "{{ db }}"
+spec:
+  serviceName: "{{ resource }}"
+  replicas: 1
+  selector:
+    matchLabels:
+      paas/db: "{{ db }}"
+  template:
+    metadata:
+      labels:
+        paas/project: "{{ project }}"
+        paas/db: "{{ db }}"
+        app.kubernetes.io/name: mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:8.4
+          # Ajustes para caber en poca RAM (Minikube pequeño).
+          args: ["--performance-schema=OFF", "--innodb-buffer-pool-size=64M"]
+          ports:
+            - containerPort: 3306
+          envFrom:
+            - secretRef:
+                name: "{{ resource }}-credentials"
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "mysqladmin ping -h 127.0.0.1 --silent"]
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: "{{ cpuRequest }}"
+              memory: "{{ memoryRequest }}"
+            limits:
+              cpu: "{{ cpuLimit }}"
+              memory: "{{ memoryLimit }}"
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/mysql
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          paas/project: "{{ project }}"
+          paas/db: "{{ db }}"
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: "{{ size }}"

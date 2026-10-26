@@ -2,6 +2,14 @@ import { renderTenantManifests, renderEnvSecret } from './templates.js';
 
 const REQUEST_TIMEOUT = '--request-timeout=15s';
 
+/**
+ * Valores de variables a redactar en logs. Los cortos (p. ej. "app", "5432") se omiten:
+ * redactarlos rompería palabras como "apply", y nunca viajan en argumentos de todos modos.
+ */
+export function redactableValues(envMap) {
+  return [...envMap.values()].filter((x) => x.length >= 6);
+}
+
 /** Selector de los pods de la release. Asume las etiquetas estándar de `helm create`. */
 export function appSelector(project) {
   return `app.kubernetes.io/instance=${project.name}`;
@@ -28,8 +36,11 @@ export function summarizePods(json) {
   return { total: active.length, ready: active.filter((p) => p.ready).length, pods };
 }
 
-export function createKube({ exec }) {
+export function createKube({ exec, db }) {
   const kubectl = (args, opts) => exec.run('kubectl', args, opts);
+  // La cuota del namespace depende también de las bases de datos del proyecto.
+  const databasesOf = (project) =>
+    db ? db.prepare('SELECT cpu_request, cpu_limit, memory_request, memory_limit FROM databases WHERE project_id = ?').all(project.id) : [];
 
   return {
     applyManifest(manifest, opts = {}) {
@@ -37,7 +48,7 @@ export function createKube({ exec }) {
     },
 
     ensureTenant(project, opts = {}) {
-      return this.applyManifest(renderTenantManifests(project), opts);
+      return this.applyManifest(renderTenantManifests(project, { databases: databasesOf(project) }), opts);
     },
 
     /** Crea o actualiza el Secret "<app>-env". Los valores viajan solo por stdin. */
@@ -46,7 +57,7 @@ export function createKube({ exec }) {
       return kubectl(['apply', '-n', project.namespace, '-f', '-'], {
         ...opts,
         stdin: manifest,
-        secrets: [...(opts.secrets || []), ...envMap.values()],
+        secrets: [...(opts.secrets || []), ...redactableValues(envMap)],
       });
     },
 
@@ -82,6 +93,33 @@ export function createKube({ exec }) {
           '--max-log-requests=10',
         ],
         { onLine, signal, echo: false, timeoutMs: 60 * 60 * 1000, maxBuffer: 1024 * 1024 },
+      );
+    },
+
+    /** Estado de las BDs del namespace en una sola llamada: { [nombre]: { ready, pvc, capacity } }. */
+    async databaseStatus(project) {
+      const r = await kubectl(['get', 'statefulsets,persistentvolumeclaims', '-n', project.namespace, '-l', 'paas/db', '-o', 'json', REQUEST_TIMEOUT], {
+        timeoutMs: 20_000,
+      });
+      if (r.dryRun) return { dryRun: true };
+      const out = {};
+      for (const it of JSON.parse(r.stdout || '{}').items || []) {
+        const name = it.metadata?.labels?.['paas/db'];
+        if (!name) continue;
+        out[name] ||= { ready: false, pvc: null, capacity: null };
+        if (it.kind === 'StatefulSet') out[name].ready = (it.status?.readyReplicas || 0) >= 1;
+        if (it.kind === 'PersistentVolumeClaim') {
+          out[name].pvc = it.status?.phase || 'Pending';
+          out[name].capacity = it.status?.capacity?.storage || null;
+        }
+      }
+      return out;
+    },
+
+    deleteDatabase(project, name, opts = {}) {
+      return kubectl(
+        ['delete', 'statefulset,service,secret,persistentvolumeclaim', '-n', project.namespace, '-l', `paas/db=${name}`, '--ignore-not-found=true', '--wait=false'],
+        opts,
       );
     },
 

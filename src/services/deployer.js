@@ -4,6 +4,7 @@ import http from 'node:http';
 import { safeExtractZip, projectRoot } from '../lib/zip.js';
 import { prepareDockerfile, makeTag } from './builder.js';
 import { buildValues, writeValuesFile } from './helm.js';
+import { redactableValues } from './kube.js';
 
 export function workspacePaths(config, project) {
   const root = path.join(config.workspacesDir, project.name);
@@ -107,7 +108,7 @@ export function createDeployer(ctx) {
     writeValuesFile(ws.values, values);
     log(`==> values.yaml escrito (imagen ${project.name}:${tag}, ${project.autoscaling_enabled ? 'HPA' : project.replicas + ' réplica(s)'})`, 'meta');
 
-    await helm.upgradeInstall(project, ws.values, { onLine: log, secrets: [...env.values()] });
+    await helm.upgradeInstall(project, ws.values, { onLine: log, secrets: redactableValues(env) });
     const revision = await currentRevision(project, log);
     setDeployment(dep.id, { helm_revision: revision, tag });
     projects.update(project, { current_tag: tag, status: 'live' });

@@ -106,6 +106,27 @@ export const MIGRATIONS = [
       CREATE INDEX deployments_project ON deployments(project_id, id DESC);
     `,
   },
+  {
+    version: 4,
+    name: 'bases de datos administradas',
+    up: `
+      CREATE TABLE databases (
+        id INTEGER PRIMARY KEY,
+        project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        engine TEXT NOT NULL CHECK (engine IN ('postgres', 'mysql')),
+        size_gi INTEGER NOT NULL,
+        cpu_request TEXT NOT NULL,
+        cpu_limit TEXT NOT NULL,
+        memory_request TEXT NOT NULL,
+        memory_limit TEXT NOT NULL,
+        password_enc TEXT NOT NULL,
+        root_password_enc TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE (project_id, name)
+      );
+    `,
+  },
 ];
 
 export function openDb(file, migrations = MIGRATIONS) {

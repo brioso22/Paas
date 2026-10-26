@@ -46,8 +46,8 @@ test('manifiestos del tenant: namespace etiquetado, quota, limitrange y networkp
 
   assert.match(docs[1], /kind: ResourceQuota/);
   assert.match(docs[1], /limits\.cpu: "1500m"/);
-  assert.match(docs[1], /persistentvolumeclaims: "2"/);
-  assert.match(docs[1], /requests\.storage: "5Gi"/);
+  assert.match(docs[1], /persistentvolumeclaims: "4"/);
+  assert.match(docs[1], /requests\.storage: "10Gi"/);
 
   assert.match(docs[2], /kind: LimitRange/);
   assert.match(docs[2], /max:\n\s+cpu: "0\.5"\n\s+memory: "1Gi"/);

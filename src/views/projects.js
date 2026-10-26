@@ -108,6 +108,7 @@ export const PROJECT_TABS = [
   ['', 'Resumen'],
   ['deployments', 'Despliegues'],
   ['env', 'Variables'],
+  ['databases', 'Bases de datos'],
   ['logs', 'Logs'],
   ['settings', 'Escalado y ajustes'],
   ['metrics', 'Métricas y costos'],

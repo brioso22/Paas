@@ -8,11 +8,11 @@ export const TENANT_TEMPLATES = ['namespace.yaml', 'resourcequota.yaml', 'limitr
 
 // Solo se interpolan valores ya validados (nombres DNS y cantidades k8s). Este filtro
 // es la segunda barrera contra inyección de YAML si algún día llega otro tipo de dato.
-const SAFE_VALUE = /^[A-Za-z0-9.\-]{1,63}$/;
+const SAFE_VALUE = /^[A-Za-z0-9._\-]{1,63}$/;
 
 export const TENANT_DEFAULTS = Object.freeze({
-  quotaPvcCount: 2,
-  quotaStorage: '5Gi',
+  quotaPvcCount: 4,
+  quotaStorage: '10Gi',
   maxPvcSize: '5Gi',
 });
 
@@ -34,11 +34,14 @@ export function maxReplicas(project) {
   return project.autoscaling_enabled ? project.autoscaling_max : project.replicas;
 }
 
-export function tenantParams(project) {
+export function tenantParams(project, databases = []) {
   // +1 para el pod extra que crea el rolling update (maxSurge) mientras conviven versiones.
   const pods = maxReplicas(project) + 1;
-  const cpu = (q) => `${toMillicores(q) * pods}m`;
-  const mem = (q) => `${toMebibytes(q) * pods}Mi`;
+  // Las bases de datos administradas (1 pod cada una) también consumen cuota.
+  const sum = (field, conv) => databases.reduce((n, d) => n + conv(d[field]), 0);
+  const cpu = (field) => `${toMillicores(project[field]) * pods + sum(field, toMillicores)}m`;
+  const mem = (field) => `${toMebibytes(project[field]) * pods + sum(field, toMebibytes)}Mi`;
+  const maxOf = (field, conv, unit) => `${Math.max(conv(project[field]), ...databases.map((d) => conv(d[field])))}${unit}`;
   return {
     project: project.name,
     namespace: project.namespace,
@@ -46,20 +49,20 @@ export function tenantParams(project) {
     cpuLimit: project.cpu_limit,
     memoryRequest: project.memory_request,
     memoryLimit: project.memory_limit,
-    maxCpu: project.cpu_limit,
-    maxMemory: project.memory_limit,
-    quotaRequestsCpu: cpu(project.cpu_request),
-    quotaLimitsCpu: cpu(project.cpu_limit),
-    quotaRequestsMemory: mem(project.memory_request),
-    quotaLimitsMemory: mem(project.memory_limit),
-    quotaPods: pods + 1,
+    maxCpu: databases.length ? maxOf('cpu_limit', toMillicores, 'm') : project.cpu_limit,
+    maxMemory: databases.length ? maxOf('memory_limit', toMebibytes, 'Mi') : project.memory_limit,
+    quotaRequestsCpu: cpu('cpu_request'),
+    quotaLimitsCpu: cpu('cpu_limit'),
+    quotaRequestsMemory: mem('memory_request'),
+    quotaLimitsMemory: mem('memory_limit'),
+    quotaPods: pods + 1 + databases.length,
     ...TENANT_DEFAULTS,
   };
 }
 
 /** Manifiestos multi-documento listos para `kubectl apply -f -`. */
-export function renderTenantManifests(project, { dir = TEMPLATE_DIR } = {}) {
-  const params = tenantParams(project);
+export function renderTenantManifests(project, { dir = TEMPLATE_DIR, databases = [] } = {}) {
+  const params = tenantParams(project, databases);
   return TENANT_TEMPLATES.map((t) => renderTemplate(loadTemplate(t, dir), params).trim()).join('\n---\n') + '\n';
 }
 
