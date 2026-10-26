@@ -30,12 +30,16 @@ export function isProjectName(v) {
   return typeof v === 'string' && PROJECT_NAME_RE.test(v);
 }
 
+// Subdominios que usa la propia plataforma (panel.DOMAIN, etc.).
+export const RESERVED_PROJECT_NAMES = Object.freeze(['panel', 'www', 'lisec']);
+
 export function projectName(v) {
   if (!isProjectName(v))
     throw new ValidationError(
       'El nombre debe tener 3-30 caracteres: minúsculas, dígitos y guiones, sin empezar ni terminar en guion',
       'name',
     );
+  if (RESERVED_PROJECT_NAMES.includes(v)) throw new ValidationError(`"${v}" está reservado por la plataforma`, 'name');
   return v;
 }
 

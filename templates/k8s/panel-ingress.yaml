@@ -1,0 +1,63 @@
+# El propio panel publicado como https://panel.DOMAIN a través de ingress-nginx.
+# Service sin selector + EndpointSlice hacia el puerto del panel en el host (gateway de
+# la red docker de Minikube). La autenticación la sigue haciendo el login del panel.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: "{{ namespace }}"
+  labels:
+    app.kubernetes.io/part-of: lisec
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: panel
+  namespace: "{{ namespace }}"
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 80
+      targetPort: {{ port }}
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: panel-host
+  namespace: "{{ namespace }}"
+  labels:
+    kubernetes.io/service-name: panel
+addressType: IPv4
+ports:
+  - name: http
+    port: {{ port }}
+    protocol: TCP
+endpoints:
+  - addresses: ["{{ upstreamIp }}"]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: panel
+  namespace: "{{ namespace }}"
+  annotations:
+    # Subidas de .zip y logs en vivo (SSE) sin cortes.
+    nginx.ingress.kubernetes.io/proxy-body-size: "{{ bodySize }}"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: ["{{ host }}"]
+      secretName: panel-tls
+  rules:
+    - host: "{{ host }}"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: panel
+                port:
+                  number: 80
