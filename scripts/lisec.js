@@ -130,8 +130,8 @@ const commands = {
       upstreamIp,
       bodySize: `${config.maxUploadMb + 5}m`,
     });
-    await ctx.kube.applyManifest(manifest, { onLine: console.log });
-    const expires = await ctx.tls.issue({ name: 'panel', namespace }, [host], { onLine: console.log });
+    await ctx.kube.applyManifest(manifest, { onLine: (line) => console.log(line) });
+    const expires = await ctx.tls.issue({ name: 'panel', namespace }, [host], { onLine: (line) => console.log(line) });
     console.log(`Panel publicado en https://${host} -> ${upstreamIp}:${config.port} (certificado hasta ${expires?.slice(0, 10)})`);
   },
 };
