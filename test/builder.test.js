@@ -87,3 +87,13 @@ test('tag: commit corto o marca de tiempo UTC', () => {
   assert.equal(makeTag('abc1234', new Date()), 'abc1234');
   assert.equal(makeTag(null, new Date('2026-03-04T05:06:07Z')), '20260304050607');
 });
+
+test('Python: requirements.txt sin Dockerfile → python:3.12-slim + gunicorn app:app', () => {
+  const info = detectStack(project({ 'requirements.txt': 'flask\n', 'app.py': '' }));
+  assert.equal(info.stack, 'python');
+  const df = generateDockerfile(info, { port: 8000 });
+  assert.match(df, /^FROM python:3\.12-slim$/m);
+  assert.match(df, /pip install --no-cache-dir -r requirements\.txt gunicorn/);
+  assert.match(df, /^CMD \["gunicorn", "--bind", "0\.0\.0\.0:8000", "--workers", "2", "app:app"\]$/m);
+  assert.match(df, /^USER app$/m);
+});

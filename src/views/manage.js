@@ -104,6 +104,16 @@ export function settingsView({ project: p, csrfToken, isAdmin, hasToken, https }
     </section>
 
     <section class="card">
+      <h2>Dominio personalizado</h2>
+      <form method="post" action="/projects/${p.id}/domain" class="form">
+        ${csrfField(csrfToken)}
+        <label>Dominio <input name="custom_domain" value="${p.custom_domain || ''}" placeholder="app.midominio.com" ${dis}></label>
+        <span class="hint">Host adicional del ingress (y del certificado si HTTPS está activo). Vacío = quitarlo. Requiere redeploy con Helm.</span>
+        ${isAdmin ? html`<div><button class="btn btn-primary" type="submit">Guardar dominio</button></div>` : ''}
+      </form>
+    </section>
+
+    <section class="card">
       <h2>HTTPS autofirmado</h2>
       ${p.tls_enabled
         ? html`<p><span class="badge badge-ok">activo</span> <a class="mono" href="${https.url}" target="_blank" rel="noopener noreferrer">${https.url}</a></p>

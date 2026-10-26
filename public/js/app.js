@@ -63,6 +63,16 @@
     if (rm) rm.closest('.env-row')?.remove();
   });
 
+  // Plantillas del formulario "Nuevo proyecto": solo rellenan campos.
+  document.addEventListener('click', (ev) => {
+    const b = ev.target.closest('[data-preset-port]');
+    if (!b) return;
+    const form = document.querySelector('form[action="/projects"]');
+    if (!form) return;
+    form.elements.port.value = b.getAttribute('data-preset-port');
+    form.elements.env.value = b.getAttribute('data-preset-env');
+  });
+
   // Alternar campos según el origen (zip/git) en el formulario de proyecto.
   function syncSource() {
     const checked = document.querySelector('input[name="source"]:checked');

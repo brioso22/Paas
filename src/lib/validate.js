@@ -134,6 +134,15 @@ export function toMebibytes(v) {
   return v.endsWith('Gi') ? Number(v.slice(0, -2)) * 1024 : Number(v.slice(0, -2));
 }
 
+/** Dominio personalizado opcional (FQDN sin comodines). Devuelve null si viene vacío. */
+export function customDomain(v) {
+  const d = String(v ?? '').trim().toLowerCase();
+  if (!d) return null;
+  if (!/^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(d))
+    throw new ValidationError('Dominio personalizado inválido (ej.: app.midominio.com, sin http:// ni comodines)', 'custom_domain');
+  return d;
+}
+
 export function username(v) {
   if (typeof v !== 'string' || !USERNAME_RE.test(v))
     throw new ValidationError('El usuario debe tener 3-32 caracteres: letras, dígitos, punto, guion o _', 'username');

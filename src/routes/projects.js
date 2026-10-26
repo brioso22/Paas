@@ -82,7 +82,15 @@ export function projectRoutes(ctx) {
   r.get('/projects/:id', requireAuth, load, async (req, res) => {
     const p = req.project;
     const pods = await safePodStatus(ctx, p);
-    const publication = await ctx.publisher.status(p).catch((err) => ({ exposed: false, url: null, message: err.message }));
+    const [publication, metrics] = await Promise.all([
+      ctx.publisher.status(p).catch((err) => ({ exposed: false, url: null, message: err.message })),
+      ctx.metrics.forProject(p),
+    ]);
+    const urls = [
+      ctx.projects.publicUrl(p),
+      ...(p.tls_enabled ? [ctx.projects.httpsUrl(p)] : []),
+      ...(p.custom_domain ? [`${p.tls_enabled ? 'https' : 'http'}://${p.custom_domain}`] : []),
+    ];
     res.page(
       p.name,
       projectOverviewView({
@@ -93,6 +101,7 @@ export function projectRoutes(ctx) {
         csrfToken: res.locals.csrfToken,
         isAdmin: req.user.role === 'admin',
         publication,
+        summary: { urls, databases: ctx.databases.list(p), costHour: metrics.costs.hour, metricsAvailable: metrics.available },
         lastDeployment: ctx.db.prepare('SELECT id, status, created_at FROM deployments WHERE project_id = ? ORDER BY id DESC LIMIT 1').get(p.id),
       }),
       { active: 'projects' },

@@ -74,3 +74,10 @@ test('usuario, contraseña y token', () => {
   assert.throws(() => v.gitToken('con espacio'));
   assert.equal(v.gitToken('ghp_abcDEF123'), 'ghp_abcDEF123');
 });
+
+test('dominio personalizado', () => {
+  assert.equal(v.customDomain(''), null);
+  assert.equal(v.customDomain(' App.Ejemplo.COM '), 'app.ejemplo.com');
+  for (const bad of ['http://a.com', '*.a.com', 'localhost', 'a..com', '-a.com', 'a.com/x', 'a b.com', 'a.c'])
+    assert.throws(() => v.customDomain(bad), v.ValidationError, bad);
+});

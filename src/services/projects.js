@@ -80,6 +80,17 @@ export function createProjectStore({ db, cipher, config }) {
       return [store.host(project), ...(project.custom_domain ? [project.custom_domain] : [])];
     },
 
+    /** Valida el dominio propio: único y fuera de *.DOMAIN (esos hosts son de otros proyectos). */
+    checkCustomDomain(value, projectId = null) {
+      const d = v.customDomain(value);
+      if (!d) return null;
+      if (d === config.domain || d.endsWith(`.${config.domain}`))
+        throw new v.ValidationError(`El dominio personalizado no puede ser ${config.domain} ni un subdominio suyo`, 'custom_domain');
+      const other = db.prepare('SELECT id FROM projects WHERE custom_domain = ?').get(d);
+      if (other && other.id !== projectId) throw new v.ValidationError(`El dominio ${d} ya lo usa otro proyecto`, 'custom_domain');
+      return d;
+    },
+
     httpsUrl(project) {
       return `https://${project.name}.${config.domain}`;
     },
@@ -100,6 +111,7 @@ export function createProjectStore({ db, cipher, config }) {
         ...parseResources(body),
         ...parseScaling(body),
         env: v.parseEnvBlock(body.env || ''),
+        custom_domain: store.checkCustomDomain(body.custom_domain),
       };
       if (source === 'git') {
         data.repo_url = v.gitUrl(String(body.repo_url || '').trim());
@@ -117,16 +129,17 @@ export function createProjectStore({ db, cipher, config }) {
           .prepare(
             `INSERT INTO projects (name, namespace, source, repo_url, branch, port, replicas,
               autoscaling_enabled, autoscaling_min, autoscaling_max, autoscaling_cpu,
-              cpu_request, cpu_limit, memory_request, memory_limit, git_token_enc, webhook_secret_enc, created_by)
+              cpu_request, cpu_limit, memory_request, memory_limit, git_token_enc, webhook_secret_enc, created_by, custom_domain)
              VALUES (@name, @namespace, @source, @repo_url, @branch, @port, @replicas,
               @autoscaling_enabled, @autoscaling_min, @autoscaling_max, @autoscaling_cpu,
-              @cpu_request, @cpu_limit, @memory_request, @memory_limit, @git_token_enc, @webhook_secret_enc, @created_by)`,
+              @cpu_request, @cpu_limit, @memory_request, @memory_limit, @git_token_enc, @webhook_secret_enc, @created_by, @custom_domain)`,
           )
           .run({
             ...data,
             git_token_enc: data.git_token ? cipher.encrypt(data.git_token, aad.git(p)) : null,
             webhook_secret_enc: cipher.encrypt(randomToken(32), aad.hook(p)),
             created_by: userId ?? null,
+            custom_domain: data.custom_domain ?? null,
           }).lastInsertRowid;
         const project = store.get(id);
         store.replaceEnv(project, { set: data.env || new Map() });

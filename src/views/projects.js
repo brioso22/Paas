@@ -61,9 +61,20 @@ function resourceFields(values) {
   </div>`;
 }
 
+export const PROJECT_PRESETS = [
+  { label: 'Node.js', port: 3000, env: 'NODE_ENV=production' },
+  { label: 'PHP / Laravel', port: 80, env: 'APP_ENV=production\nAPP_DEBUG=false\nAPP_KEY=\nLOG_CHANNEL=stderr' },
+  { label: 'Python / Flask', port: 8000, env: 'FLASK_ENV=production\nPYTHONUNBUFFERED=1' },
+];
+
 export function newProjectView({ csrfToken, values = {}, error, domain }) {
   const src = values.source || 'zip';
   return html`<h1>Nuevo proyecto</h1>
+  <div class="card row">
+    <span class="muted">Plantilla:</span>
+    ${PROJECT_PRESETS.map((t) => html`<button type="button" class="btn btn-small" data-preset-port="${t.port}" data-preset-env="${t.env}">${t.label}</button>`)}
+    <span class="hint">Rellena el puerto y variables sugeridas; puedes cambiarlos.</span>
+  </div>
   ${error ? html`<div class="alert alert-error">${error}</div>` : ''}
   <form method="post" action="/projects" class="form card">
     ${csrfField(csrfToken)}
@@ -85,6 +96,11 @@ export function newProjectView({ csrfToken, values = {}, error, domain }) {
         </label>
       </div>
     </fieldset>
+
+    <label>Dominio personalizado (opcional)
+      <input name="custom_domain" placeholder="app.midominio.com" value="${values.custom_domain || ''}" autocomplete="off">
+      <span class="hint">Se añade como host extra del ingress y del certificado HTTPS. Debe apuntar (DNS) a este servidor.</span>
+    </label>
 
     <label>Puerto del contenedor <input name="port" type="number" min="1" max="65535" required value="${values.port || '3000'}">
       <span class="hint">Puerto en el que escucha tu aplicación (Node suele ser 3000, PHP/nginx 80).</span></label>
@@ -124,8 +140,25 @@ export function projectHeader(project, active, tabs = PROJECT_TABS) {
     </nav>`;
 }
 
-export function projectOverviewView({ project: p, pods, url, ingressTest, csrfToken, isAdmin, lastDeployment, publication, extra = '' }) {
+export function projectOverviewView({ project: p, pods, url, ingressTest, csrfToken, isAdmin, lastDeployment, publication, summary, extra = '' }) {
   return html`${projectHeader(p, '')}
+  ${summary
+    ? html`<section class="card">
+        <h2>Resumen</h2>
+        <div class="grid">
+          <div><small>URL(s)</small>${summary.urls.map((u) => html`<div><a class="mono" href="${u}" target="_blank" rel="noopener noreferrer">${u}</a></div>`)}</div>
+          <div><small>Estado</small><div>${statusBadge(p.status)} ${podsCell(pods)}</div><small>Réplicas: ${desiredReplicas(p)}</small></div>
+          <div><small>Base de datos</small><div>${summary.databases.length
+            ? summary.databases.map((d) => html`<div><a href="/projects/${p.id}/databases">${d.name}</a> <small>${d.engine}, ${d.size_gi} Gi</small></div>`)
+            : html`<span class="muted">ninguna</span>`}</div></div>
+          <div><small>Último despliegue</small><div>${lastDeployment
+            ? html`<a href="/deployments/${lastDeployment.id}">#${lastDeployment.id}</a> ${statusBadge(lastDeployment.status)}`
+            : html`<span class="muted">nunca</span>`}</div></div>
+          <div><small>Costo estimado / hora</small><div class="metric">${summary.costHour === null ? '—' : `$${summary.costHour.toFixed(4)}`}</div>
+            ${summary.metricsAvailable ? '' : html`<small>Prometheus no disponible</small>`}</div>
+        </div>
+      </section>`
+    : ''}
   <div class="grid">
     <section class="card">
       <h2>General</h2>

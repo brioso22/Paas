@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import { Router } from 'express';
 import { requireAuth, requireAdmin, flash } from '../middleware/security.js';
 import { withProject } from './projects.js';
+import { ValidationError } from '../lib/validate.js';
 
 export function tlsRoutes(ctx) {
   const { tls, projects, queue } = ctx;
@@ -44,6 +45,30 @@ export function tlsRoutes(ctx) {
     projects.update(req.project, { tls_enabled: 0 });
     if (!req.project.current_tag) {
       flash(req, 'success', 'HTTPS desactivado.');
+      return back(req, res);
+    }
+    res.redirect(`/deployments/${redeploy(req)}`);
+  });
+
+  r.post('/projects/:id/domain', requireAdmin, load, async (req, res) => {
+    let domain;
+    try {
+      domain = projects.checkCustomDomain(req.body?.custom_domain, req.project.id);
+    } catch (err) {
+      if (!(err instanceof ValidationError)) throw err;
+      flash(req, 'error', err.message);
+      return back(req, res);
+    }
+    if (domain === (req.project.custom_domain || null)) {
+      flash(req, 'info', 'Sin cambios.');
+      return back(req, res);
+    }
+    req.project = projects.update(req.project, { custom_domain: domain });
+    // El certificado debe cubrir el host nuevo.
+    if (req.project.tls_enabled && !(await issue(req, res))) return;
+    ctx.logger.info(`Dominio de ${req.project.name} cambiado a ${domain || '(ninguno)'} por ${req.user.username}`);
+    if (!req.project.current_tag) {
+      flash(req, 'success', 'Dominio guardado. Se aplicará en el primer despliegue.');
       return back(req, res);
     }
     res.redirect(`/deployments/${redeploy(req)}`);

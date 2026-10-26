@@ -35,8 +35,9 @@ export function detectStack(dir) {
     const laravel = has('artisan') || Boolean(composer.require?.['laravel/framework']);
     return { stack: 'php', label: laravel ? 'PHP / Laravel' : 'PHP', laravel };
   }
+  if (has('requirements.txt')) return { stack: 'python', label: 'Python (gunicorn)' };
   if (has('index.html')) return { stack: 'static', label: 'Sitio estático (nginx)' };
-  throw new BuildError('No se pudo detectar el stack: se esperaba Dockerfile, package.json, composer.json o index.html en la raíz');
+  throw new BuildError('No se pudo detectar el stack: se esperaba Dockerfile, package.json, composer.json, requirements.txt o index.html en la raíz');
 }
 
 export function generateDockerfile(info, { port }) {
@@ -91,6 +92,20 @@ RUN composer dump-autoload --optimize --no-dev --no-scripts
 ${laravelPerms}EXPOSE ${p}
 `;
     }
+    case 'python':
+      return `# Generado por paas-panel (stack: Python con gunicorn, módulo app:app)
+FROM python:3.12-slim
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+WORKDIR /app
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt gunicorn
+COPY . .
+RUN useradd --create-home --uid 10001 app && chown -R app /app
+USER app
+ENV PORT=${p}
+EXPOSE ${p}
+CMD ["gunicorn", "--bind", "0.0.0.0:${p}", "--workers", "2", "app:app"]
+`;
     case 'static':
       return `# Generado por paas-panel (stack: sitio estático)
 FROM nginx:alpine
