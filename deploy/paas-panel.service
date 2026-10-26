@@ -1,0 +1,25 @@
+# Unidad systemd de USUARIO para paas-panel.
+# deploy/install.sh la copia a ~/.config/systemd/user/ ajustando rutas, node y PATH.
+# Manual: systemctl --user {status|restart|stop} paas-panel   ·   logs: journalctl --user -u paas-panel -f
+[Unit]
+Description=PaaS Panel - panel web del PaaS sobre Minikube
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/paas-panel
+EnvironmentFile=%h/paas-panel/.env
+# kubectl, helm, minikube y git deben estar en este PATH (install.sh lo completa).
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/node src/server.js
+Restart=always
+RestartSec=5
+# El panel no necesita escalar privilegios: ningún comando usa sudo.
+NoNewPrivileges=true
+UMask=0077
+# Da tiempo a cerrar streams SSE y a que la BD haga checkpoint.
+TimeoutStopSec=15
+
+[Install]
+WantedBy=default.target
