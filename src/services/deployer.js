@@ -126,9 +126,10 @@ export function createDeployer(ctx) {
     if (ctx.publisher) {
       try {
         const res = await ctx.publisher.expose(project);
-        if (res?.url) log(`Publicado en ${res.url}`);
+        log(`Publicación (${ctx.publisher.name}): ${res.exposed ? `publicado en ${res.url}` : res.message}`);
       } catch (err) {
-        log(`Aviso: publicación externa falló: ${err.message}`, 'stderr');
+        // La app ya está desplegada; un fallo al publicar no debe marcar el despliegue como fallido.
+        log(`Aviso: la publicación externa falló: ${err.message}`, 'stderr');
       }
     }
   }

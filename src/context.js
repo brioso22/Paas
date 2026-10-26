@@ -12,6 +12,7 @@ import { createBuilder } from './services/builder.js';
 import { createDeployer } from './services/deployer.js';
 import { createQueue } from './jobs/queue.js';
 import { createMetrics } from './services/metrics.js';
+import { createPublisher } from './services/publisher/index.js';
 
 export function createLogger(prefix = 'paas-panel') {
   const ts = () => new Date().toISOString();
@@ -50,6 +51,7 @@ export function createContext(config, { logger = createLogger(), exec, now = () 
   ctx.git = createGit(ctx);
   ctx.builder = createBuilder(ctx);
   ctx.metrics = createMetrics(ctx);
+  ctx.publisher = createPublisher(ctx);
   ctx.lifecycle = createLifecycle(ctx);
   ctx.deployer = createDeployer(ctx);
   ctx.queue = createQueue({ db: ctx.db, logger, runner: (dep, io) => ctx.deployer(dep, io), maxLogBytes: config.maxLogBytes });

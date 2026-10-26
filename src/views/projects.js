@@ -123,7 +123,7 @@ export function projectHeader(project, active, tabs = PROJECT_TABS) {
     </nav>`;
 }
 
-export function projectOverviewView({ project: p, pods, url, ingressTest, csrfToken, isAdmin, lastDeployment, extra = '' }) {
+export function projectOverviewView({ project: p, pods, url, ingressTest, csrfToken, isAdmin, lastDeployment, publication, extra = '' }) {
   return html`${projectHeader(p, '')}
   <div class="grid">
     <section class="card">
@@ -131,6 +131,7 @@ export function projectOverviewView({ project: p, pods, url, ingressTest, csrfTo
       <dl class="kv">
         <dt>URL pública</dt><dd><a href="${url}" target="_blank" rel="noopener noreferrer" class="mono">${url}</a></dd>
         <dt>Namespace</dt><dd class="mono">${p.namespace}</dd>
+        ${publication ? html`<dt>Publicación</dt><dd>${publication.exposed ? html`<a href="${publication.url}" class="mono" target="_blank" rel="noopener noreferrer">${publication.url}</a>` : html`<small>${publication.message}</small>`}</dd>` : ''}
         <dt>Origen</dt><dd>${p.source === 'git' ? html`<span class="mono">${p.repo_url}</span> (rama <span class="mono">${p.branch}</span>)` : 'Archivo .zip'}</dd>
         <dt>Puerto</dt><dd>${p.port}</dd>
         <dt>Versión actual</dt><dd class="mono">${p.current_tag || '—'}</dd>
