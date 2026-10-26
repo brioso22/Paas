@@ -5,6 +5,8 @@
 //   node scripts/lisec.js projects
 //   node scripts/lisec.js create <nombre> --repo <url> --port <n> [--branch main] [--no-tls]
 //   node scripts/lisec.js db <proyecto> <nombre> <postgres|mysql> [--size 1] [--cpu 150m] [--memory 512Mi]
+//   node scripts/lisec.js set <proyecto> --port <n>
+//   node scripts/lisec.js env <proyecto> CLAVE=valor [CLAVE2=valor ...]   (no imprime los valores)
 //   node scripts/lisec.js deploy <proyecto> [--config]     (--config: sin reconstruir la imagen)
 //   node scripts/lisec.js expose-panel                     (https://panel.DOMAIN)
 //
@@ -15,6 +17,7 @@ import Database from 'better-sqlite3';
 import { loadConfig, ConfigError } from '../src/config.js';
 import { createContext } from '../src/context.js';
 import { renderTemplate, loadTemplate } from '../src/services/templates.js';
+import * as v from '../src/lib/validate.js';
 import { parseDbForm, checkStorageQuota, generatePassword, renderDbManifest, connectionEnv, explainKubeError } from '../src/services/databases.js';
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
@@ -104,6 +107,28 @@ const commands = {
     ctx.projects.replaceEnv(p, { set: connectionEnv(p, d, password) });
     ctx.audit.record(actor, 'db.create', { project: p, detail: `${d.name} ${d.engine} ${d.size_gi}Gi (cli)` });
     console.log(`BD ${d.engine} ${d.name} creada (${d.cpu_limit} / ${d.memory_limit}); variables DB_* añadidas a ${p.name}.`);
+  },
+
+  set([projectName]) {
+    const p = project(projectName);
+    if (flags.port === undefined) die('indica --port <n>');
+    const updated = ctx.projects.update(p, { port: v.port(flags.port) });
+    ctx.audit.record(actor, 'project.update', { project: updated, detail: `port ${updated.port} (cli)` });
+    console.log(`${updated.name}: puerto ${updated.port}. Redespliega para aplicarlo.`);
+  },
+
+  env([projectName, ...pairs]) {
+    const p = project(projectName);
+    const set = new Map();
+    for (const pair of pairs) {
+      const i = pair.indexOf('=');
+      if (i < 1) die(`formato CLAVE=valor: ${pair.split('=')[0]}`);
+      set.set(pair.slice(0, i), pair.slice(i + 1));
+    }
+    if (!set.size) die('indica al menos una variable CLAVE=valor');
+    ctx.projects.replaceEnv(p, { set });
+    ctx.audit.record(actor, 'env.update', { project: p, detail: `${[...set.keys()].join(', ')} (cli)` });
+    console.log(`${p.name}: ${[...set.keys()].join(', ')} guardadas. Redespliega para aplicarlas.`);
   },
 
   async deploy([projectName]) {
