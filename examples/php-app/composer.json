@@ -1,0 +1,6 @@
+{
+  "name": "paas/php-app-ejemplo",
+  "description": "Ejemplo mínimo con estructura tipo Laravel (artisan + public/)",
+  "require": { "php": ">=8.2" },
+  "autoload": { "psr-4": { "App\\": "app/" } }
+}

@@ -1,0 +1,4 @@
+#!/usr/bin/env php
+<?php
+// Marcador: su presencia hace que el panel trate el proyecto como Laravel (DocumentRoot = public/).
+echo "artisan de ejemplo\n";

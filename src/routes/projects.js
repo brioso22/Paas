@@ -91,6 +91,7 @@ export function projectRoutes(ctx) {
         ingressTest: ingressTestCommand(ctx, p),
         csrfToken: res.locals.csrfToken,
         isAdmin: req.user.role === 'admin',
+        lastDeployment: ctx.db.prepare('SELECT id, status, created_at FROM deployments WHERE project_id = ? ORDER BY id DESC LIMIT 1').get(p.id),
       }),
       { active: 'projects' },
     );
@@ -102,7 +103,14 @@ export function projectRoutes(ctx) {
       flash(req, 'error', 'El nombre de confirmación no coincide; no se eliminó nada.');
       return res.redirect(`/projects/${p.id}`);
     }
-    const warnings = await ctx.lifecycle.destroy(p);
+    let warnings;
+    try {
+      warnings = await ctx.lifecycle.destroy(p);
+    } catch (err) {
+      if (err.status !== 409) throw err;
+      flash(req, 'error', err.message);
+      return res.redirect(`/projects/${p.id}`);
+    }
     ctx.logger.info(`Proyecto ${p.name} eliminado por ${req.user.username}`);
     flash(req, warnings.length ? 'warn' : 'success', `Proyecto ${p.name} eliminado.${warnings.length ? ' Avisos: ' + warnings.join(' | ') : ''}`);
     res.redirect('/');

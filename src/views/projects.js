@@ -106,6 +106,7 @@ export function newProjectView({ csrfToken, values = {}, error, domain }) {
 
 export const PROJECT_TABS = [
   ['', 'Resumen'],
+  ['deployments', 'Despliegues'],
 ];
 
 export function projectHeader(project, active, tabs = PROJECT_TABS) {
@@ -117,7 +118,7 @@ export function projectHeader(project, active, tabs = PROJECT_TABS) {
     </nav>`;
 }
 
-export function projectOverviewView({ project: p, pods, url, ingressTest, csrfToken, isAdmin, extra = '' }) {
+export function projectOverviewView({ project: p, pods, url, ingressTest, csrfToken, isAdmin, lastDeployment, extra = '' }) {
   return html`${projectHeader(p, '')}
   <div class="grid">
     <section class="card">
@@ -128,6 +129,9 @@ export function projectOverviewView({ project: p, pods, url, ingressTest, csrfTo
         <dt>Origen</dt><dd>${p.source === 'git' ? html`<span class="mono">${p.repo_url}</span> (rama <span class="mono">${p.branch}</span>)` : 'Archivo .zip'}</dd>
         <dt>Puerto</dt><dd>${p.port}</dd>
         <dt>Versión actual</dt><dd class="mono">${p.current_tag || '—'}</dd>
+        <dt>Último despliegue</dt><dd>${lastDeployment
+          ? html`<a href="/deployments/${lastDeployment.id}">#${lastDeployment.id}</a> ${statusBadge(lastDeployment.status)} <small>${lastDeployment.created_at} UTC</small>`
+          : html`<a href="/projects/${p.id}/deployments">Aún no desplegado</a>`}</dd>
         <dt>Creado</dt><dd>${p.created_at} UTC</dd>
       </dl>
     </section>

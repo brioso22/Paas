@@ -77,6 +77,35 @@ export const MIGRATIONS = [
       );
     `,
   },
+  {
+    version: 3,
+    name: 'historial de despliegues',
+    up: `
+      CREATE TABLE deployments (
+        id INTEGER PRIMARY KEY,
+        project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL CHECK (kind IN ('build', 'config', 'restart', 'rollback')),
+        status TEXT NOT NULL DEFAULT 'queued'
+          CHECK (status IN ('queued', 'building', 'deploying', 'success', 'failed')),
+        tag TEXT,
+        commit_sha TEXT,
+        source_ref TEXT,
+        stack TEXT,
+        helm_revision INTEGER,
+        rollback_of INTEGER REFERENCES deployments(id) ON DELETE SET NULL,
+        image_pruned INTEGER NOT NULL DEFAULT 0,
+        error TEXT,
+        log TEXT NOT NULL DEFAULT '',
+        log_truncated INTEGER NOT NULL DEFAULT 0,
+        triggered_by TEXT NOT NULL,
+        user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        started_at TEXT,
+        finished_at TEXT
+      );
+      CREATE INDEX deployments_project ON deployments(project_id, id DESC);
+    `,
+  },
 ];
 
 export function openDb(file, migrations = MIGRATIONS) {
