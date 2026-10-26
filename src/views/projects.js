@@ -110,6 +110,7 @@ export const PROJECT_TABS = [
   ['env', 'Variables'],
   ['logs', 'Logs'],
   ['settings', 'Escalado y ajustes'],
+  ['webhook', 'Webhook'],
 ];
 
 export function projectHeader(project, active, tabs = PROJECT_TABS) {

@@ -11,6 +11,7 @@ import { healthRoutes } from './routes/health.js';
 import { projectRoutes } from './routes/projects.js';
 import { deploymentRoutes } from './routes/deployments.js';
 import { manageRoutes } from './routes/manage.js';
+import { webhookRoutes } from './routes/webhooks.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const SESSION_COOKIE = 'paas.sid';
@@ -51,6 +52,8 @@ export function createApp(ctx) {
   app.use('/static', express.static(path.join(__dirname, '..', 'public'), { maxAge: '1h', index: false }));
 
   app.use(healthRoutes(ctx));
+  // Los webhooks necesitan el cuerpo crudo para verificar la firma HMAC: van antes de los parsers.
+  app.use(webhookRoutes(ctx));
 
   app.use(express.urlencoded({ extended: false, limit: '256kb', parameterLimit: 1000 }));
   app.use(express.json({ limit: '256kb' }));

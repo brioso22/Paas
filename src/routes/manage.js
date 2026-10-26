@@ -5,6 +5,7 @@ import * as v from '../lib/validate.js';
 import { parseResources, parseScaling } from '../services/projects.js';
 import { openSse } from '../lib/sse.js';
 import { envView, logsView, settingsView } from '../views/manage.js';
+import { webhookView } from '../views/webhook.js';
 
 const MAX_LOG_STREAMS = 5;
 
@@ -214,6 +215,39 @@ export function manageRoutes(ctx) {
     }
     flash(req, 'success', 'Repositorio actualizado.');
     back(req, res, 'settings');
+  });
+
+  // --- Webhook -----------------------------------------------------------------
+
+  r.get('/projects/:id/webhook', requireAuth, load, (req, res) => {
+    const p = req.project;
+    const recent = ctx.db
+      .prepare("SELECT id, status, source_ref, created_at FROM deployments WHERE project_id = ? AND triggered_by = 'webhook:github' ORDER BY id DESC LIMIT 10")
+      .all(p.id);
+    res.page(
+      `${p.name} · webhook`,
+      webhookView({
+        project: p,
+        url: `${ctx.config.publicBaseUrl}/hooks/github/${p.id}`,
+        csrfToken: res.locals.csrfToken,
+        isAdmin: req.user.role === 'admin',
+        recent,
+        publicBaseUrl: ctx.config.publicBaseUrl,
+      }),
+      { active: 'projects' },
+    );
+  });
+
+  r.post('/projects/:id/webhook/reveal', requireAdmin, load, (req, res) => {
+    ctx.logger.info(`${req.user.username} reveló el secreto del webhook de ${req.project.name}`);
+    res.set('Cache-Control', 'no-store').json({ value: projects.webhookSecret(req.project) });
+  });
+
+  r.post('/projects/:id/webhook/rotate', requireAdmin, load, (req, res) => {
+    projects.rotateWebhookSecret(req.project);
+    ctx.logger.info(`${req.user.username} regeneró el secreto del webhook de ${req.project.name}`);
+    flash(req, 'success', 'Secreto regenerado. Actualízalo en GitHub.');
+    back(req, res, 'webhook');
   });
 
   return r;
