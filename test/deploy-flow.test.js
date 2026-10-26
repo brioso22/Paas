@@ -2,72 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { createContext } from '../src/context.js';
-import { createApp } from '../src/app.js';
 import { createExec, ExecError } from '../src/lib/exec.js';
-import { testConfig, silentLogger, startServer, setupAdmin } from './helpers/setup.js';
+import { silentLogger } from './helpers/setup.js';
 import { buildZip } from './helpers/zip.js';
-
-const SECRET = 'valor-ultra-secreto-42';
-
-function clock(start = Date.parse('2026-01-02T03:04:05Z')) {
-  let t = start;
-  return () => new Date((t += 60_000));
-}
-
-async function boot({ env = {}, exec } = {}) {
-  const config = testConfig(env);
-  const ctx = createContext(config, { logger: silentLogger, now: clock(), exec });
-  const srv = await startServer(createApp(ctx));
-  const c = srv.client();
-  await setupAdmin(c);
-  return { ctx, config, srv, c, close: async () => (await srv.close(), ctx.close()) };
-}
-
-async function createProject(c, form) {
-  await c.get('/projects/new');
-  const r = await c.post('/projects', {
-    form: {
-      _csrf: c.csrf,
-      port: '80',
-      cpu_request: '100m',
-      cpu_limit: '500m',
-      memory_request: '128Mi',
-      memory_limit: '256Mi',
-      replicas: '2',
-      env: `DB_PASS=${SECRET}\nAPP_ENV=produccion`,
-      ...form,
-    },
-  });
-  assert.equal(r.status, 302, r.text?.slice(0, 400));
-  return Number(r.headers.get('location').split('/').pop());
-}
-
-async function uploadZip(c, projectId, entries, filename = 'sitio.zip') {
-  await c.get(`/projects/${projectId}/deployments`);
-  const fd = new FormData();
-  fd.append('archive', new Blob([buildZip(entries)], { type: 'application/zip' }), filename);
-  return c.post(`/projects/${projectId}/deploy/zip?_csrf=${encodeURIComponent(c.csrf)}`, { body: fd });
-}
-
-const cmdline = (h) => [h.cmd, ...h.args].join(' ');
-
-async function readSse(base, c, url, headers = {}) {
-  const res = await fetch(base + url, { headers: { cookie: [...c.jar].map(([k, v]) => `${k}=${v}`).join('; '), ...headers } });
-  const text = await res.text();
-  const events = text
-    .split('\n\n')
-    .filter((b) => b.includes('event:'))
-    .map((b) => {
-      const ev = {};
-      for (const line of b.split('\n')) {
-        const i = line.indexOf(': ');
-        if (i > 0) ev[line.slice(0, i)] = line.slice(i + 2);
-      }
-      return ev;
-    });
-  return { status: res.status, type: res.headers.get('content-type'), events };
-}
+import { SECRET, boot, createProject, uploadZip, cmdline, readSse } from './helpers/app.js';
 
 test('flujo zip completo en DRY_RUN: secuencia exacta de comandos', async (t) => {
   const { ctx, config, srv, c, close } = await boot();

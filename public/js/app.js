@@ -115,6 +115,9 @@
         append(e.data);
       }
     });
+    es.addEventListener('reset', () => {
+      pre.textContent = '';
+    });
     es.addEventListener('status', (e) => {
       if (!statusEl) return;
       statusEl.textContent = e.data;

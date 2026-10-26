@@ -107,6 +107,9 @@ export function newProjectView({ csrfToken, values = {}, error, domain }) {
 export const PROJECT_TABS = [
   ['', 'Resumen'],
   ['deployments', 'Despliegues'],
+  ['env', 'Variables'],
+  ['logs', 'Logs'],
+  ['settings', 'Escalado y ajustes'],
 ];
 
 export function projectHeader(project, active, tabs = PROJECT_TABS) {
