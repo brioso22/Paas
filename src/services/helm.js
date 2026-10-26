@@ -8,7 +8,10 @@ import path from 'node:path';
  */
 export function buildValues(project, { tag, host, hosts = [host], envKeys = [] }) {
   const env = envKeys.includes('PORT') ? [] : [{ name: 'PORT', value: String(project.port) }];
+  // httpGet: null borra la sonda httpGet por defecto del chart; si no, Helm fusiona ambas
+  // y Kubernetes rechaza el Deployment ("may not specify more than 1 handler type").
   const probe = (initialDelaySeconds, periodSeconds) => ({
+    httpGet: null,
     tcpSocket: { port: project.port },
     initialDelaySeconds,
     periodSeconds,
