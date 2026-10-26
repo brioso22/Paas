@@ -18,7 +18,8 @@ export function setupView({ csrfToken, error, username = '' }) {
 
 export function loginView({ csrfToken, error, username = '', next = '', allowRegistration = false }) {
   return html`<section class="card narrow">
-    <h1>Iniciar sesión</h1>
+    <h1>Lisec PaaS</h1>
+    <p class="muted">Inicia sesión para gestionar tus proyectos.</p>
     ${error ? html`<div class="alert alert-error">${error}</div>` : ''}
     <form method="post" action="/login" class="form">
       ${csrfField(csrfToken)}

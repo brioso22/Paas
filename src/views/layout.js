@@ -15,7 +15,7 @@ function navLink(href, label, iconName, key, active) {
 function sidebar(user, csrfToken, active, dryRun) {
   return html`<aside class="sidebar" id="sidebar">
     <div class="sidebar-head">
-      <a class="brand" href="/">${icon('server')}<span>PaaS Panel</span></a>
+      <a class="brand" href="/">${icon('server')}<span>Lisec PaaS</span></a>
       ${dryRun ? html`<span class="badge badge-warn" title="Los comandos no se ejecutan, solo se registran">DRY_RUN</span>` : ''}
     </div>
     <nav class="nav" aria-label="Principal">
@@ -62,7 +62,7 @@ export function layout({ title, user, csrfToken, flash = [], body, dryRun = fals
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="${csrfToken || ''}">
-  <title>${title} · PaaS Panel</title>
+  <title>${title} · Lisec PaaS</title>
   <link rel="stylesheet" href="/static/css/style.css">
   <script src="/static/js/theme.js"></script>
   <script src="/static/js/app.js" defer></script>
@@ -72,10 +72,10 @@ export function layout({ title, user, csrfToken, flash = [], body, dryRun = fals
   ${user
     ? html`<header class="mobilebar">
         <button type="button" class="btn btn-icon" data-nav-toggle aria-controls="sidebar" aria-expanded="false" aria-label="Abrir menú">${icon('menu')}</button>
-        <a class="brand" href="/">PaaS Panel</a>
+        <a class="brand" href="/">Lisec PaaS</a>
       </header>
       ${sidebar(user, csrfToken, active, dryRun)}`
-    : html`<header class="topbar"><a class="brand" href="/">${icon('server')}<span>PaaS Panel</span></a>
+    : html`<header class="topbar"><a class="brand" href="/">${icon('server')}<span>Lisec PaaS</span></a>
         ${dryRun ? html`<span class="badge badge-warn">DRY_RUN</span>` : ''}
         <button type="button" class="btn btn-icon" data-theme-toggle aria-label="Cambiar tema">${icon('theme')}</button></header>`}
   <main class="container" id="main" tabindex="-1">
