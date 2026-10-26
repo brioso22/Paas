@@ -6,7 +6,7 @@ import path from 'node:path';
  * para no depender de un serializador YAML ni arriesgar inyección. Nunca contiene secretos:
  * las variables llegan por envFrom desde el Secret "<app>-env".
  */
-export function buildValues(project, { tag, host, envKeys = [] }) {
+export function buildValues(project, { tag, host, hosts = [host], envKeys = [] }) {
   const env = envKeys.includes('PORT') ? [] : [{ name: 'PORT', value: String(project.port) }];
   const probe = (initialDelaySeconds, periodSeconds) => ({
     tcpSocket: { port: project.port },
@@ -23,8 +23,8 @@ export function buildValues(project, { tag, host, envKeys = [] }) {
     ingress: {
       enabled: true,
       className: 'nginx',
-      hosts: [{ host, paths: [{ path: '/', pathType: 'Prefix' }] }],
-      tls: [],
+      hosts: hosts.map((h) => ({ host: h, paths: [{ path: '/', pathType: 'Prefix' }] })),
+      tls: project.tls_enabled ? [{ secretName: `${project.name}-tls`, hosts }] : [],
     },
     env,
     envFrom: [{ secretRef: { name: `${project.name}-env` } }],

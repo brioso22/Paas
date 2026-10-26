@@ -57,7 +57,7 @@ export function logsView({ project: p }) {
   </section>`;
 }
 
-export function settingsView({ project: p, csrfToken, isAdmin, hasToken }) {
+export function settingsView({ project: p, csrfToken, isAdmin, hasToken, https }) {
   const dis = isAdmin ? '' : 'disabled';
   return html`${projectHeader(p, 'settings')}
   <div class="grid">
@@ -101,6 +101,23 @@ export function settingsView({ project: p, csrfToken, isAdmin, hasToken }) {
         <span class="hint">Recalcula la ResourceQuota y el LimitRange del namespace y redespliega con Helm.</span>
         ${isAdmin ? html`<div><button class="btn btn-primary" type="submit">Guardar recursos</button></div>` : ''}
       </form>
+    </section>
+
+    <section class="card">
+      <h2>HTTPS autofirmado</h2>
+      ${p.tls_enabled
+        ? html`<p><span class="badge badge-ok">activo</span> <a class="mono" href="${https.url}" target="_blank" rel="noopener noreferrer">${https.url}</a></p>
+            <p class="hint">Expira: ${p.tls_expires_at ? p.tls_expires_at.slice(0, 10) : '—'}. Prueba: <span class="mono">curl --cacert paas-ca.crt --resolve ${https.host}:${https.nodePort}:${https.ingressIp} https://${https.host}:${https.nodePort}/</span></p>`
+        : html`<p class="muted">Emite un certificado para <span class="mono">${https.host}</span>${p.custom_domain ? html` y <span class="mono">${p.custom_domain}</span>` : ''} firmado por la CA del panel (365 días) y lo sirve el ingress.</p>`}
+      ${isAdmin
+        ? html`<div class="row">
+            ${p.tls_enabled
+              ? html`<form method="post" action="/projects/${p.id}/tls/renew" class="inline">${csrfField(csrfToken)}<button class="btn" type="submit">Renovar certificado</button></form>
+                  <form method="post" action="/projects/${p.id}/tls/disable" class="inline" data-confirm="¿Desactivar HTTPS?">${csrfField(csrfToken)}<button class="btn btn-danger" type="submit">Desactivar</button></form>`
+              : html`<form method="post" action="/projects/${p.id}/tls/enable" class="inline">${csrfField(csrfToken)}<button class="btn btn-primary" type="submit">Activar HTTPS autofirmado</button></form>`}
+          </div>`
+        : ''}
+      <p class="hint"><a href="/tls/ca.crt">Descargar el certificado de la CA</a> (solo la parte pública). Para que el navegador no avise: Chrome/Edge → Configuración → Privacidad y seguridad → Seguridad → Gestionar certificados → Entidades de certificación → Importar; Firefox → Ajustes → Privacidad → Ver certificados → Autoridades → Importar y marcar "confiar para sitios web". En Linux: <span class="mono">sudo cp paas-ca.crt /usr/local/share/ca-certificates/ && sudo update-ca-certificates</span>.</p>
     </section>
 
     <section class="card">

@@ -14,6 +14,7 @@ import { manageRoutes } from './routes/manage.js';
 import { webhookRoutes } from './routes/webhooks.js';
 import { metricsRoutes } from './routes/metrics.js';
 import { databaseRoutes } from './routes/databases.js';
+import { tlsRoutes } from './routes/tls.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const SESSION_COOKIE = 'paas.sid';
@@ -111,6 +112,7 @@ export function createApp(ctx) {
   app.use(manageRoutes(ctx));
   app.use(metricsRoutes(ctx));
   app.use(databaseRoutes(ctx));
+  app.use(tlsRoutes(ctx));
 
   app.use((req, res) => {
     if ((req.get('accept') || '').includes('application/json')) return res.status(404).json({ error: 'No encontrado' });

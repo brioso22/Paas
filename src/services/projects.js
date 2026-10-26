@@ -75,6 +75,15 @@ export function createProjectStore({ db, cipher, config }) {
       return `${project.name}.${config.domain}`;
     },
 
+    /** Todos los hosts del ingress (y SAN del certificado): el interno y el dominio propio. */
+    hosts(project) {
+      return [store.host(project), ...(project.custom_domain ? [project.custom_domain] : [])];
+    },
+
+    httpsUrl(project) {
+      return `https://${project.name}.${config.domain}`;
+    },
+
     /** Valida el formulario completo de creación. Devuelve los datos listos para `create`. */
     parseCreateForm(body) {
       const name = v.projectName(String(body.name || '').trim());
@@ -129,6 +138,7 @@ export function createProjectStore({ db, cipher, config }) {
       const allowed = [
         'repo_url', 'branch', 'port', 'replicas', 'autoscaling_enabled', 'autoscaling_min', 'autoscaling_max',
         'autoscaling_cpu', 'cpu_request', 'cpu_limit', 'memory_request', 'memory_limit', 'status', 'current_tag',
+        'tls_enabled', 'tls_expires_at', 'custom_domain',
       ];
       const keys = Object.keys(fields).filter((k) => allowed.includes(k));
       if (!keys.length) return project;

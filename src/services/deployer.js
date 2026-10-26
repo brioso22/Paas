@@ -104,7 +104,7 @@ export function createDeployer(ctx) {
     await kube.applyEnvSecret(project, env, { onLine: log });
 
     const ws = workspacePaths(config, project);
-    const values = buildValues(project, { tag, host: projects.host(project), envKeys: [...env.keys()] });
+    const values = buildValues(project, { tag, hosts: projects.hosts(project), envKeys: [...env.keys()] });
     writeValuesFile(ws.values, values);
     log(`==> values.yaml escrito (imagen ${project.name}:${tag}, ${project.autoscaling_enabled ? 'HPA' : project.replicas + ' réplica(s)'})`, 'meta');
 

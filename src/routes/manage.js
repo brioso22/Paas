@@ -124,7 +124,13 @@ export function manageRoutes(ctx) {
   r.get('/projects/:id/settings', requireAuth, load, (req, res) => {
     res.page(
       `${req.project.name} · ajustes`,
-      settingsView({ project: req.project, csrfToken: res.locals.csrfToken, isAdmin: req.user.role === 'admin', hasToken: Boolean(req.project.git_token_enc) }),
+      settingsView({
+        project: req.project,
+        csrfToken: res.locals.csrfToken,
+        isAdmin: req.user.role === 'admin',
+        hasToken: Boolean(req.project.git_token_enc),
+        https: { url: projects.httpsUrl(req.project), nodePort: ctx.config.ingressHttpsNodePort, ingressIp: ctx.config.ingressIp, host: projects.host(req.project) },
+      }),
       { active: 'projects' },
     );
   });

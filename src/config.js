@@ -139,6 +139,7 @@ export function loadConfig(env = process.env) {
     chartPath: dir('CHART_PATH', '~/paas-app-chart'),
     ingressIp,
     ingressNodePort: int('INGRESS_NODEPORT', 32134, 1, 65535),
+    ingressHttpsNodePort: int('INGRESS_HTTPS_NODEPORT', 31703, 1, 65535),
     prometheusUrl: url('PROMETHEUS_URL', 'http://localhost:9090'),
     priceCpuHour: num('PRICE_CPU_HOUR', 0.05),
     priceRamGbHour: num('PRICE_RAM_GB_HOUR', 0.01),

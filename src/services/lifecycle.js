@@ -27,6 +27,7 @@ export function createLifecycle(ctx) {
         .all(project.id);
       for (const tag of tags) await attempt(`imagen ${tag}`, () => ctx.builder.removeImage(project, tag));
       fs.rmSync(workspacePaths(ctx.config, project).root, { recursive: true, force: true });
+      ctx.tls?.remove(project);
       ctx.projects.remove(project);
       return warnings;
     },

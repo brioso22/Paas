@@ -1,7 +1,7 @@
 // ÚNICO módulo autorizado a crear procesos. Ver test/security.test.js.
 import { spawn } from 'node:child_process';
 
-export const ALLOWED_COMMANDS = Object.freeze(['kubectl', 'helm', 'minikube', 'git']);
+export const ALLOWED_COMMANDS = Object.freeze(['kubectl', 'helm', 'minikube', 'git', 'openssl']);
 
 // Variables del propio panel que jamás deben heredar los procesos hijos.
 const PANEL_SECRET_ENV = ['SESSION_SECRET', 'SECRETS_KEY'];

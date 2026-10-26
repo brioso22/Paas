@@ -14,6 +14,7 @@ import { createQueue } from './jobs/queue.js';
 import { createMetrics } from './services/metrics.js';
 import { createPublisher } from './services/publisher/index.js';
 import { createDatabaseStore } from './services/databases.js';
+import { createTls } from './services/tls.js';
 
 export function createLogger(prefix = 'paas-panel') {
   const ts = () => new Date().toISOString();
@@ -49,6 +50,7 @@ export function createContext(config, { logger = createLogger(), exec, now = () 
   ctx.kube = createKube(ctx);
   ctx.projects = createProjectStore(ctx);
   ctx.databases = createDatabaseStore(ctx);
+  ctx.tls = createTls(ctx);
   ctx.helm = createHelm(ctx);
   ctx.git = createGit(ctx);
   ctx.builder = createBuilder(ctx);
