@@ -3,6 +3,7 @@ import { flash } from '../middleware/security.js';
 import { withProject } from './projects.js';
 import * as v from '../lib/validate.js';
 import { parseResources, parseScaling } from '../services/projects.js';
+import { coveredByWildcard } from '../services/tls.js';
 import { openSse } from '../lib/sse.js';
 import { envView, logsView, settingsView, domainsView } from '../views/manage.js';
 import { webhookView } from '../views/webhook.js';
@@ -145,7 +146,12 @@ export function manageRoutes(ctx) {
         project: req.project,
         csrfToken: res.locals.csrfToken,
         can: req.can,
-        https: { url: projects.httpsUrl(req.project), nodePort: ctx.config.ingressHttpsNodePort, ingressIp: ctx.config.ingressIp, host: projects.host(req.project) },
+        https: {
+          url: projects.httpsUrl(req.project),
+          host: projects.host(req.project),
+          domain: ctx.config.domain,
+          wildcard: coveredByWildcard(projects.hosts(req.project), ctx.config.domain),
+        },
       }),
       { active: 'projects' },
     );

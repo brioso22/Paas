@@ -153,20 +153,34 @@ export function domainsView({ project: p, csrfToken, can, https }) {
     </section>
 
     <section class="card">
-      <h2>HTTPS autofirmado</h2>
+      <h2>HTTPS (CA de Lisec)</h2>
       ${p.tls_enabled
         ? html`<p><span class="badge badge-ok">activo</span> <a class="mono" href="${https.url}" target="_blank" rel="noopener noreferrer">${https.url}</a></p>
-            <p class="hint">Expira: ${p.tls_expires_at ? p.tls_expires_at.slice(0, 10) : '—'}. Prueba: <span class="mono">curl --cacert paas-ca.crt --resolve ${https.host}:${https.nodePort}:${https.ingressIp} https://${https.host}:${https.nodePort}/</span></p>`
-        : html`<p class="muted">Emite un certificado para <span class="mono">${https.host}</span>${p.custom_domain ? html` y <span class="mono">${p.custom_domain}</span>` : ''} firmado por la CA del panel (365 días) y lo sirve el ingress.</p>`}
+            <p class="hint">Certificado ${https.wildcard ? html`wildcard <span class="mono">*.${https.domain}</span>` : 'propio del proyecto'}, expira ${p.tls_expires_at ? p.tls_expires_at.slice(0, 10) : '—'}. HTTP redirige a HTTPS (308).</p>
+            <div class="copy-cmd"><small>Prueba</small><div class="row"><input id="tls-curl" class="mono" value="curl --cacert lisec-ca.crt ${https.url}/" readonly><button class="btn" type="button" data-copy="#tls-curl">Copiar</button></div></div>`
+        : html`<p class="muted">Sirve <span class="mono">${https.host}</span>${p.custom_domain ? html` y <span class="mono">${p.custom_domain}</span>` : ''} por HTTPS con un certificado firmado por la CA de Lisec (365 días).</p>`}
       ${canTls
         ? html`<div class="row">
             ${p.tls_enabled
               ? html`<form method="post" action="/projects/${p.id}/tls/renew" class="inline">${csrfField(csrfToken)}<button class="btn" type="submit">Renovar certificado</button></form>
                   <form method="post" action="/projects/${p.id}/tls/disable" class="inline" data-confirm="¿Desactivar HTTPS?">${csrfField(csrfToken)}<button class="btn btn-danger" type="submit">Desactivar</button></form>`
-              : html`<form method="post" action="/projects/${p.id}/tls/enable" class="inline">${csrfField(csrfToken)}<button class="btn btn-primary" type="submit">Activar HTTPS autofirmado</button></form>`}
+              : html`<form method="post" action="/projects/${p.id}/tls/enable" class="inline">${csrfField(csrfToken)}<button class="btn btn-primary" type="submit">Activar HTTPS</button></form>`}
           </div>`
         : ''}
-      <p class="hint"><a href="/tls/ca.crt">Descargar el certificado de la CA</a> (solo la parte pública). Para que el navegador no avise: Chrome/Edge → Configuración → Privacidad y seguridad → Seguridad → Gestionar certificados → Entidades de certificación → Importar; Firefox → Ajustes → Privacidad → Ver certificados → Autoridades → Importar y marcar "confiar para sitios web". En Linux: <span class="mono">sudo cp paas-ca.crt /usr/local/share/ca-certificates/ && sudo update-ca-certificates</span>.</p>
+    </section>
+
+    <section class="card">
+      <h2>Certificado de la CA</h2>
+      <p><a class="btn btn-primary" href="/tls/ca.crt" download>Descargar lisec-ca.crt</a> <small class="muted">Solo la parte pública; la clave nunca sale del servidor.</small></p>
+      <p class="hint">Instálalo una vez en cada equipo para que los navegadores confíen en <span class="mono">https://*.${https.domain}</span>:</p>
+      <ul class="ca-steps hint">
+        <li><strong>Brave / Chrome (Linux)</strong>: <span class="mono">brave://settings/certificates</span> o <span class="mono">chrome://settings/certificates</span> → Autoridades → Importar → <span class="mono">lisec-ca.crt</span> → marcar «Confiar en este certificado para identificar sitios web».</li>
+        <li><strong>Firefox</strong>: Ajustes → Privacidad y seguridad → Certificados → Ver certificados → Autoridades → Importar → marcar «Confiar en esta CA para identificar sitios web».</li>
+        <li><strong>Sistema (curl, wget, apps)</strong>:
+          <div class="copy-cmd"><div class="row"><input id="ca-system" class="mono" value="sudo cp lisec-ca.crt /usr/local/share/ca-certificates/lisec-ca.crt &amp;&amp; sudo update-ca-certificates" readonly><button class="btn" type="button" data-copy="#ca-system">Copiar</button></div></div>
+        </li>
+      </ul>
+      <p class="hint">Reinicia el navegador después de importar. Sin instalarla: <span class="mono">curl --cacert lisec-ca.crt …</span></p>
     </section>
 
   </div>`;

@@ -46,9 +46,21 @@ export async function projectRow(ctx, project) {
   };
 }
 
-export function ingressTestCommand(ctx, project) {
-  const { ingressIp, ingressNodePort } = ctx.config;
-  return `curl -H 'Host: ${ctx.projects.host(project)}' http://${ingressIp}:${ingressNodePort}/`;
+/** Comandos para probar el proyecto, listos para copiar. */
+export function ingressTestCommands(ctx, project) {
+  const { ingressIp, ingressNodePort, ingressHttpsNodePort } = ctx.config;
+  const host = ctx.projects.host(project);
+  const cmds = [];
+  if (project.tls_enabled) {
+    cmds.push({ label: 'Desde la tailnet (DNS *.' + ctx.config.domain + ', CA instalada o con --cacert)', cmd: `curl --cacert lisec-ca.crt https://${host}/` });
+    cmds.push({ label: 'HTTP redirige a HTTPS (308)', cmd: `curl -sI http://${host}/` });
+  } else {
+    cmds.push({ label: 'Desde la tailnet (DNS *.' + ctx.config.domain + ')', cmd: `curl http://${host}/` });
+  }
+  cmds.push({ label: 'Desde el servidor, directo al ingress (sin DNS)', cmd: `curl -H 'Host: ${host}' http://${ingressIp}:${ingressNodePort}/` });
+  if (project.tls_enabled)
+    cmds.push({ label: 'Desde el servidor, HTTPS directo al ingress', cmd: `curl --cacert lisec-ca.crt --resolve ${host}:${ingressHttpsNodePort}:${ingressIp} https://${host}:${ingressHttpsNodePort}/` });
+  return cmds;
 }
 
 export function projectRoutes(ctx) {
@@ -111,18 +123,14 @@ export function projectRoutes(ctx) {
       ctx.publisher.status(p).catch((err) => ({ exposed: false, url: null, message: err.message })),
       ctx.metrics.forProject(p),
     ]);
-    const urls = [
-      ctx.projects.publicUrl(p),
-      ...(p.tls_enabled ? [ctx.projects.httpsUrl(p)] : []),
-      ...(p.custom_domain ? [`${p.tls_enabled ? 'https' : 'http'}://${p.custom_domain}`] : []),
-    ];
+    const urls = [ctx.projects.publicUrl(p), ...(p.custom_domain ? [`${p.tls_enabled ? 'https' : 'http'}://${p.custom_domain}`] : [])];
     res.page(
       p.name,
       projectOverviewView({
         project: p,
         pods,
         url: ctx.projects.publicUrl(p),
-        ingressTest: ingressTestCommand(ctx, p),
+        ingressTest: ingressTestCommands(ctx, p),
         csrfToken: res.locals.csrfToken,
         can: req.can,
         publication,

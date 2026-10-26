@@ -101,8 +101,9 @@ export function createProjectStore({ db, cipher, config }) {
       return db.prepare('SELECT * FROM projects WHERE name = ?').get(name) || null;
     },
 
+    /** URL con la que se muestra el proyecto: https:// si tiene HTTPS activo, http:// si no. */
     publicUrl(project) {
-      return `http://${project.name}.${config.domain}`;
+      return `${project.tls_enabled ? 'https' : 'http'}://${store.host(project)}`;
     },
 
     host(project) {
@@ -146,6 +147,8 @@ export function createProjectStore({ db, cipher, config }) {
         ...parseScaling(body),
         env: v.parseEnvBlock(body.env || ''),
         custom_domain: store.checkCustomDomain(body.custom_domain),
+        // HTTPS por defecto. El formulario manda tls_form=1 para distinguir "casilla desmarcada".
+        tls_enabled: body.tls_form === '1' ? (body.tls_enabled === 'on' ? 1 : 0) : 1,
       };
       if (source === 'git') {
         data.repo_url = v.gitUrl(String(body.repo_url || '').trim());
@@ -163,10 +166,10 @@ export function createProjectStore({ db, cipher, config }) {
           .prepare(
             `INSERT INTO projects (name, namespace, source, repo_url, branch, port, replicas,
               autoscaling_enabled, autoscaling_min, autoscaling_max, autoscaling_cpu,
-              cpu_request, cpu_limit, memory_request, memory_limit, git_token_enc, webhook_secret_enc, created_by, custom_domain)
+              cpu_request, cpu_limit, memory_request, memory_limit, git_token_enc, webhook_secret_enc, created_by, custom_domain, tls_enabled)
              VALUES (@name, @namespace, @source, @repo_url, @branch, @port, @replicas,
               @autoscaling_enabled, @autoscaling_min, @autoscaling_max, @autoscaling_cpu,
-              @cpu_request, @cpu_limit, @memory_request, @memory_limit, @git_token_enc, @webhook_secret_enc, @created_by, @custom_domain)`,
+              @cpu_request, @cpu_limit, @memory_request, @memory_limit, @git_token_enc, @webhook_secret_enc, @created_by, @custom_domain, @tls_enabled)`,
           )
           .run({
             ...data,
@@ -174,6 +177,7 @@ export function createProjectStore({ db, cipher, config }) {
             webhook_secret_enc: cipher.encrypt(randomToken(32), aad.hook(p)),
             created_by: userId ?? null,
             custom_domain: data.custom_domain ?? null,
+            tls_enabled: data.tls_enabled ?? 0,
           }).lastInsertRowid;
         const project = store.get(id);
         if (userId) store.setMember(project, userId, 'owner');

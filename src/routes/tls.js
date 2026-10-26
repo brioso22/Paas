@@ -11,9 +11,9 @@ export function tlsRoutes(ctx) {
   const back = (req, res) => res.redirect(`/projects/${req.project.id}/domains`);
   const redeploy = (req) => queue.enqueue({ projectId: req.project.id, kind: 'config', triggeredBy: req.user.username, userId: req.user.id, ip: req.ip, tag: req.project.current_tag });
 
-  async function issue(req, res) {
+  async function issue(req, res, { force = false } = {}) {
     try {
-      const expires = await tls.issue(req.project, projects.hosts(req.project));
+      const expires = await tls.issue(req.project, projects.hosts(req.project), { force });
       return projects.update(req.project, { tls_expires_at: expires });
     } catch (err) {
       ctx.logger.error(`TLS de ${req.project.name}: ${err.message}`);
@@ -36,7 +36,7 @@ export function tlsRoutes(ctx) {
   });
 
   r.post('/projects/:id/tls/renew', load('tls.manage'), async (req, res) => {
-    if (!(await issue(req, res))) return;
+    if (!(await issue(req, res, { force: true }))) return;
     ctx.audit.record(req, 'tls.renew', { project: req.project });
     // ingress-nginx recarga el Secret por su cuenta: no hace falta redesplegar.
     flash(req, 'success', 'Certificado renovado.');
@@ -81,7 +81,7 @@ export function tlsRoutes(ctx) {
   // Solo el certificado público de la CA; la clave nunca sale de DATA_DIR.
   r.get('/tls/ca.crt', requirePermission('tls.ca'), (req, res) => {
     if (!tls.caExists()) return res.errorPage(404, 'Aún no se ha generado la CA (activa HTTPS en algún proyecto).');
-    res.set({ 'Content-Type': 'application/x-x509-ca-cert', 'Content-Disposition': 'attachment; filename="paas-ca.crt"' });
+    res.set({ 'Content-Type': 'application/x-x509-ca-cert', 'Content-Disposition': 'attachment; filename="lisec-ca.crt"' });
     res.send(fs.readFileSync(tls.paths.caCert));
   });
 

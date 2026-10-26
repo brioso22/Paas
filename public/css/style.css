@@ -1,4 +1,4 @@
-/* PaaS Panel — CSS propio, sin dependencias. Tema claro/oscuro por variables. */
+/* Lisec PaaS — CSS propio, sin dependencias. Tema claro/oscuro por variables. */
 :root {
   --bg: #f4f6f9;
   --surface: #ffffff;
@@ -261,3 +261,10 @@ dialog.modal .row { justify-content: flex-end; margin-top: 1.2rem; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* Comandos copiables (resumen del proyecto) */
+.copy-cmd { margin: .5rem 0; }
+.copy-cmd .row { flex-wrap: nowrap; gap: .5rem; }
+.copy-cmd input { flex: 1; min-width: 0; font-size: .85rem; }
+.ca-steps { margin: .4rem 0 0; padding-left: 1.2rem; }
+.ca-steps li { margin: .25rem 0; }

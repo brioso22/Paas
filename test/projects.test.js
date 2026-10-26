@@ -52,7 +52,7 @@ test('crear proyecto zip: BD, cifrado y namespace + plantillas por stdin', async
   // Listado y detalle.
   let page = await c.get('/');
   assert.match(page.text, /tenant-demo/);
-  assert.match(page.text, /http:\/\/demo\.paas\.local/);
+  assert.match(page.text, /https:\/\/demo\.paas\.local/);
   page = await c.get(`/projects/${p.id}`);
   assert.equal(page.status, 200);
   assert.match(page.text, /curl -H &#39;Host: demo\.paas\.local&#39; http:\/\/192\.168\.49\.2:32134\//);

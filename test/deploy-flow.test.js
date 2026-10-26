@@ -12,7 +12,7 @@ test('flujo zip completo en DRY_RUN: secuencia exacta de comandos', async (t) =>
   t.after(close);
   const ws = path.join(config.workspacesDir, 'web');
 
-  const id = await createProject(c, { name: 'web', source: 'zip' });
+  const id = await createProject(c, { name: 'web', source: 'zip', tls_form: '1' });
   ctx.exec.clearHistory();
 
   const r = await uploadZip(c, id, [{ name: 'index.html', data: '<h1>hola</h1>' }]);
@@ -142,7 +142,7 @@ test('flujo git en DRY_RUN: clone con token por GIT_CONFIG_* y nunca en argument
   const { ctx, config, c, close } = await boot();
   t.after(close);
   const token = 'ghp_TokenSuperSecreto987';
-  const id = await createProject(c, { name: 'api', source: 'git', repo_url: 'https://github.com/acme/api.git', branch: 'develop', git_token: token, port: '3000' });
+  const id = await createProject(c, { name: 'api', source: 'git', repo_url: 'https://github.com/acme/api.git', branch: 'develop', git_token: token, port: '3000', tls_form: '1' });
   ctx.exec.clearHistory();
 
   await c.get(`/projects/${id}/deployments`);

@@ -103,6 +103,14 @@ export function createDeployer(ctx) {
     log(`==> Actualizando Secret ${project.name}-env (${env.size} variables)`, 'meta');
     await kube.applyEnvSecret(project, env, { onLine: log });
 
+    if (project.tls_enabled) {
+      // Reutiliza el certificado vigente; solo emite uno nuevo si falta, caduca o no cubre los hosts
+      // (p. ej. tras cambiar DOMAIN).
+      log(`==> Secret TLS ${project.name}-tls (CA propia)`, 'meta');
+      const expires = await ctx.tls.issue(project, projects.hosts(project), { onLine: log });
+      if (expires) project = projects.update(project, { tls_expires_at: expires });
+    }
+
     const ws = workspacePaths(config, project);
     const values = buildValues(project, { tag, hosts: projects.hosts(project), envKeys: [...env.keys()] });
     writeValuesFile(ws.values, values);

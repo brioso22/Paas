@@ -124,6 +124,9 @@ export function newProjectView({ csrfToken, values = {}, error, domain }) {
       <span class="hint">Se añade como host extra del ingress y del certificado HTTPS. Debe apuntar (DNS) a este servidor.</span>
     </label>
 
+    <input type="hidden" name="tls_form" value="1">
+    <label class="check"><input type="checkbox" name="tls_enabled" ${values.tls_form === '1' && values.tls_enabled !== 'on' ? '' : 'checked'}> HTTPS (certificado de la CA de Lisec; HTTP redirige a HTTPS)</label>
+
     <label>Puerto del contenedor <input name="port" type="number" min="1" max="65535" required value="${values.port || '3000'}">
       <span class="hint">Puerto en el que escucha tu aplicación (Node suele ser 3000, PHP/nginx 80).</span></label>
 
@@ -211,8 +214,12 @@ export function projectOverviewView({ project: p, pods, url, ingressTest, csrfTo
         <dt>CPU</dt><dd>${p.cpu_request} / ${p.cpu_limit}</dd>
         <dt>Memoria</dt><dd>${p.memory_request} / ${p.memory_limit}</dd>
       </dl>
-      <h3>Probar el ingress</h3>
-      <pre class="log">${ingressTest}</pre>
+      <h3>Probar en local</h3>
+      ${ingressTest.map(
+        (t, i) => html`<div class="copy-cmd"><small>${t.label}</small>
+          <div class="row"><input id="test-cmd-${i}" class="mono" value="${t.cmd}" readonly><button class="btn" type="button" data-copy="#test-cmd-${i}">Copiar</button></div></div>`,
+      )}
+      ${p.tls_enabled ? html`<p class="hint"><a href="/tls/ca.crt">Descargar lisec-ca.crt</a> · instrucciones en <a href="/projects/${p.id}/domains">Dominios y HTTPS</a>.</p>` : ''}
     </section>
   </div>
   ${pods && pods.pods && pods.pods.length

@@ -5,9 +5,34 @@ import crypto from 'node:crypto';
 const CERT_DAYS = 365;
 const CA_DAYS = 3650;
 
+const RENEW_BEFORE_DAYS = 30;
+
 export function tlsPaths(config) {
   const dir = path.join(config.dataDir, 'tls');
-  return { dir, caKey: path.join(dir, 'ca.key'), caCert: path.join(dir, 'ca.crt'), projects: path.join(dir, 'projects') };
+  return {
+    dir,
+    caKey: path.join(dir, 'ca.key'),
+    caCert: path.join(dir, 'ca.crt'),
+    wildcardKey: path.join(dir, 'wildcard.key'),
+    wildcardCert: path.join(dir, 'wildcard.crt'),
+    projects: path.join(dir, 'projects'),
+  };
+}
+
+/** ¿Cubre *.domain todos los hosts? (un solo nivel de subdominio, como exige X.509). */
+export function coveredByWildcard(hosts, domain) {
+  return hosts.every((h) => h === domain || (h.endsWith(`.${domain}`) && !h.slice(0, -domain.length - 1).includes('.')));
+}
+
+/** El certificado existe, cubre `hosts` y no caduca en los próximos RENEW_BEFORE_DAYS días. */
+export function certUsable(certFile, hosts, now = new Date()) {
+  try {
+    const x = new crypto.X509Certificate(fs.readFileSync(certFile));
+    if (new Date(x.validTo).getTime() - now.getTime() < RENEW_BEFORE_DAYS * 86400_000) return false;
+    return hosts.every((h) => x.checkHost(h) !== undefined);
+  } catch {
+    return false;
+  }
 }
 
 /** Extensiones X.509 del certificado de un proyecto (SAN con todos sus hosts). */
@@ -47,7 +72,7 @@ export function createTls(ctx) {
     await openssl(
       [
         'req', '-x509', '-new', '-nodes', '-newkey', 'rsa:2048', '-sha256', '-days', String(CA_DAYS),
-        '-keyout', paths.caKey, '-out', paths.caCert, '-subj', '/CN=PaaS Panel CA',
+        '-keyout', paths.caKey, '-out', paths.caCert, '-subj', '/CN=Lisec PaaS CA',
         '-addext', 'basicConstraints=critical,CA:TRUE', '-addext', 'keyUsage=critical,keyCertSign,cRLSign',
       ],
       opts,
@@ -70,26 +95,36 @@ export function createTls(ctx) {
 
     caExists: () => fs.existsSync(paths.caCert),
 
-    /** Emite (o renueva) el certificado del proyecto y crea/actualiza su Secret TLS. Devuelve la expiración ISO. */
+    /**
+     * Crea/actualiza el Secret TLS del proyecto. Si todos sus hosts son <x>.DOMAIN usa el
+     * certificado wildcard compartido (*.DOMAIN y DOMAIN); si tiene dominio propio, uno
+     * suyo con todos los SAN. Reutiliza el certificado vigente salvo `force` (renovar).
+     * Devuelve la expiración ISO.
+     */
     async issue(project, hosts, opts = {}) {
-      await ensureCA(opts);
+      const { force = false, ...execOpts } = opts;
+      await ensureCA(execOpts);
+      const wildcard = coveredByWildcard(hosts, config.domain);
       const base = path.join(paths.projects, project.name);
-      const key = `${base}.key`;
-      const csr = `${base}.csr`;
-      const crt = `${base}.crt`;
-      const ext = `${base}.ext`;
-      fs.writeFileSync(ext, certExtensions(hosts), { mode: 0o600 });
-      await openssl(['req', '-new', '-nodes', '-newkey', 'rsa:2048', '-keyout', key, '-out', csr, '-subj', `/CN=${hosts[0]}`], opts);
-      await openssl(
-        [
-          'x509', '-req', '-in', csr, '-CA', paths.caCert, '-CAkey', paths.caKey,
-          '-set_serial', `0x${crypto.randomBytes(16).toString('hex')}`,
-          '-days', String(CERT_DAYS), '-sha256', '-extfile', ext, '-out', crt,
-        ],
-        opts,
-      );
-      lock600(key, crt);
-      fs.rmSync(csr, { force: true });
+      const [key, crt] = wildcard ? [paths.wildcardKey, paths.wildcardCert] : [`${base}.key`, `${base}.crt`];
+      const sans = wildcard ? [`*.${config.domain}`, config.domain] : hosts;
+      if (force || !certUsable(crt, hosts, ctx.now())) {
+        const csr = wildcard ? path.join(paths.dir, 'wildcard.csr') : `${base}.csr`;
+        const ext = wildcard ? path.join(paths.dir, 'wildcard.ext') : `${base}.ext`;
+        fs.writeFileSync(ext, certExtensions(sans), { mode: 0o600 });
+        await openssl(['req', '-new', '-nodes', '-newkey', 'rsa:2048', '-keyout', key, '-out', csr, '-subj', `/CN=${sans[0]}`], execOpts);
+        await openssl(
+          [
+            'x509', '-req', '-in', csr, '-CA', paths.caCert, '-CAkey', paths.caKey,
+            '-set_serial', `0x${crypto.randomBytes(16).toString('hex')}`,
+            '-days', String(CERT_DAYS), '-sha256', '-extfile', ext, '-out', crt,
+          ],
+          execOpts,
+        );
+        lock600(key, crt);
+        fs.rmSync(csr, { force: true });
+      }
+      opts = execOpts;
 
       if (config.dryRun && !fs.existsSync(crt)) {
         // Sin openssl real no hay PEM: se registra el apply igualmente para ver el flujo completo.
