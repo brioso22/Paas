@@ -41,7 +41,9 @@ console.log(`Zips de ejemplo en ${path.relative(root, dist)}/`);
 
 if (ctx.db.prepare('SELECT COUNT(*) FROM users').pluck().get() === 0) {
   const password = process.env.SEED_ADMIN_PASSWORD || crypto.randomBytes(9).toString('base64url');
-  ctx.db.prepare("INSERT INTO users (username, password_hash, role) VALUES ('admin', ?, 'admin')").run(bcrypt.hashSync(password, 12));
+  ctx.db
+    .prepare("INSERT INTO users (username, password_hash, role, plan_id) VALUES ('admin', ?, 'admin', (SELECT id FROM plans WHERE name = 'ilimitado'))")
+    .run(bcrypt.hashSync(password, 12));
   console.log(`Usuario admin creado. Contraseña: ${password}`);
 } else {
   console.log('Ya existen usuarios; no se crea el admin.');

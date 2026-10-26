@@ -1,14 +1,25 @@
 import { Router } from 'express';
-import { requireAuth, requireAdmin, flash } from '../middleware/security.js';
+import { requireAuth, requirePermission, flash, httpError } from '../middleware/security.js';
+import { can, permsFor } from '../lib/authz.js';
+import { projectFootprint } from '../services/users.js';
 import { ValidationError } from '../lib/validate.js';
 import { dashboardView, newProjectView, projectOverviewView } from '../views/projects.js';
 
-/** Carga :id como proyecto o responde 404. */
-export function withProject(ctx) {
+/**
+ * Carga :id para el usuario actual y exige `action`. Un proyecto que el usuario no puede
+ * ver responde 404 (igual que uno inexistente): así no se filtra qué ids existen.
+ */
+export function withProject(ctx, action = 'project.view') {
   return (req, res, next) => {
-    const project = ctx.projects.get(req.params.id);
-    if (!project) return res.errorPage(404, 'Proyecto no encontrado');
+    if (!req.user) return requireAuth(req, res, next);
+    const project = ctx.projects.getFor(req.params.id, req.user);
+    if (!project || !can(req.user, 'project.view', project)) return next(httpError(404, 'Proyecto no encontrado'));
+    if (!can(req.user, action, project)) return next(httpError(403, 'No tienes permisos para esta acción en este proyecto'));
+    req.can = permsFor(req.user, project);
+    // Las vistas (pestañas, botones) preguntan a project.can; no se serializa.
+    Object.defineProperty(project, 'can', { value: req.can, enumerable: false });
     req.project = project;
+    res.locals.can = req.can;
     next();
   };
 }
@@ -28,26 +39,27 @@ export function ingressTestCommand(ctx, project) {
 
 export function projectRoutes(ctx) {
   const r = Router();
-  const load = withProject(ctx);
+  const load = (action) => withProject(ctx, action);
 
   r.get('/', requireAuth, async (req, res) => {
-    const projects = ctx.projects.list();
+    const projects = ctx.projects.list(req.user);
     const rows = await Promise.all(
       projects.map(async (project) => ({ project, pods: await safePodStatus(ctx, project), url: ctx.projects.publicUrl(project) })),
     );
-    res.page('Proyectos', dashboardView({ rows, isAdmin: req.user.role === 'admin' }), { active: 'projects' });
+    res.page('Proyectos', dashboardView({ rows, canCreate: can(req.user, 'project.create') }), { active: 'projects' });
   });
 
-  r.get('/projects/new', requireAdmin, (req, res) => {
+  r.get('/projects/new', requirePermission('project.create'), (req, res) => {
     res.page('Nuevo proyecto', newProjectView({ csrfToken: res.locals.csrfToken, domain: ctx.config.domain }), { active: 'new' });
   });
 
-  r.post('/projects', requireAdmin, async (req, res) => {
+  r.post('/projects', requirePermission('project.create'), async (req, res) => {
     const body = req.body || {};
     let data;
     try {
       data = ctx.projects.parseCreateForm(body);
       if (ctx.projects.getByName(data.name)) throw new ValidationError(`Ya existe un proyecto llamado "${data.name}"`, 'name');
+      ctx.users.checkQuota(req.user, { projects: 1, ...projectFootprint(data) });
     } catch (err) {
       if (!(err instanceof ValidationError)) throw err;
       const { git_token, ...values } = body; // nunca se re-renderiza el token
@@ -75,11 +87,12 @@ export function projectRoutes(ctx) {
       );
     }
     ctx.logger.info(`Proyecto ${project.name} creado por ${req.user.username}`);
+    ctx.audit.record(req, 'project.create', { project, detail: project.source });
     flash(req, 'success', `Proyecto ${project.name} creado. Namespace ${project.namespace} listo.`);
     res.redirect(`/projects/${project.id}`);
   });
 
-  r.get('/projects/:id', requireAuth, load, async (req, res) => {
+  r.get('/projects/:id', load('project.view'), async (req, res) => {
     const p = req.project;
     const pods = await safePodStatus(ctx, p);
     const [publication, metrics] = await Promise.all([
@@ -99,7 +112,7 @@ export function projectRoutes(ctx) {
         url: ctx.projects.publicUrl(p),
         ingressTest: ingressTestCommand(ctx, p),
         csrfToken: res.locals.csrfToken,
-        isAdmin: req.user.role === 'admin',
+        can: req.can,
         publication,
         summary: { urls, databases: ctx.databases.list(p), costHour: metrics.costs.hour, metricsAvailable: metrics.available },
         lastDeployment: ctx.db.prepare('SELECT id, status, created_at FROM deployments WHERE project_id = ? ORDER BY id DESC LIMIT 1').get(p.id),
@@ -108,7 +121,7 @@ export function projectRoutes(ctx) {
     );
   });
 
-  r.post('/projects/:id/delete', requireAdmin, load, async (req, res) => {
+  r.post('/projects/:id/delete', load('project.delete'), async (req, res) => {
     const p = req.project;
     if ((req.body?.confirm_name || '') !== p.name) {
       flash(req, 'error', 'El nombre de confirmación no coincide; no se eliminó nada.');
@@ -123,6 +136,7 @@ export function projectRoutes(ctx) {
       return res.redirect(`/projects/${p.id}`);
     }
     ctx.logger.info(`Proyecto ${p.name} eliminado por ${req.user.username}`);
+    ctx.audit.record(req, 'project.delete', { project: p, detail: warnings.length ? `con ${warnings.length} aviso(s)` : null });
     flash(req, warnings.length ? 'warn' : 'success', `Proyecto ${p.name} eliminado.${warnings.length ? ' Avisos: ' + warnings.join(' | ') : ''}`);
     res.redirect('/');
   });

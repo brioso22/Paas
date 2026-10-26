@@ -113,8 +113,9 @@ test('página de métricas con Prometheus caído y precios editables solo por ad
   const v = srv.client();
   await v.get('/login');
   await v.post('/login', { form: { _csrf: v.csrf, username: 'lector', password: 'lector-password-1' } });
-  await v.get('/settings');
+  // Las páginas de administración no existen para quien no es admin.
+  assert.equal((await v.get('/settings')).status, 404);
   r = await v.post('/settings/prices', { form: { _csrf: v.csrf, cpu_hour: '9', ram_gb_hour: '9' } });
-  assert.equal(r.status, 403);
+  assert.equal(r.status, 404);
   assert.deepEqual(ctx.metrics.prices(), { cpuHour: 0.07, ramGbHour: 0.015 });
 });

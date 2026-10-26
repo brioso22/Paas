@@ -10,8 +10,9 @@ function duration(d) {
   return s >= 60 ? `${Math.floor(s / 60)} min ${s % 60} s` : `${s} s`;
 }
 
-export function deploymentsView({ project: p, deployments, csrfToken, isAdmin, maxUploadMb, rollbackable, hasLastZip, webhookUrl }) {
-  const deployForms = !isAdmin
+export function deploymentsView({ project: p, deployments, csrfToken, can, maxUploadMb, rollbackable, hasLastZip, webhookUrl }) {
+  const canDeploy = can('project.deploy');
+  const deployForms = !canDeploy
     ? ''
     : html`<section class="card">
         <h2>Nuevo despliegue</h2>
@@ -64,7 +65,7 @@ export function deploymentsView({ project: p, deployments, csrfToken, isAdmin, m
               <td>${d.triggered_by}</td>
               <td><small>${d.started_at || d.created_at}</small></td>
               <td><small>${duration(d)}</small></td>
-              <td>${isAdmin && rollbackable.has(d.id)
+              <td>${canDeploy && rollbackable.has(d.id)
                 ? html`<form method="post" action="/projects/${p.id}/deployments/${d.id}/rollback" class="inline" data-confirm="¿Volver a la revisión ${d.helm_revision} (${d.tag})?">
                     ${csrfField(csrfToken)}<button class="btn btn-small" type="submit">Rollback</button></form>`
                 : ''}</td>

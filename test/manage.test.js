@@ -79,7 +79,8 @@ test('editar variables: enmascaradas, revelado con CSRF y rollout restart', asyn
 test('un viewer ve la página de variables pero no puede revelar ni guardar', async (t) => {
   const { ctx, srv, id, close } = await deployedZipProject();
   t.after(close);
-  ctx.db.prepare("INSERT INTO users (username, password_hash, role) VALUES ('lector', ?, 'viewer')").run(bcrypt.hashSync('lector-password-1', 4));
+  const uid = ctx.db.prepare("INSERT INTO users (username, password_hash, role) VALUES ('lector', ?, 'viewer')").run(bcrypt.hashSync('lector-password-1', 4)).lastInsertRowid;
+  ctx.projects.setMember({ id }, uid, 'viewer');
   const v = srv.client();
   await v.get('/login');
   await v.post('/login', { form: { _csrf: v.csrf, username: 'lector', password: 'lector-password-1' } });

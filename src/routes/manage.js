@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { requireAuth, requireAdmin, flash } from '../middleware/security.js';
+import { flash } from '../middleware/security.js';
 import { withProject } from './projects.js';
 import * as v from '../lib/validate.js';
 import { parseResources, parseScaling } from '../services/projects.js';
@@ -39,7 +39,7 @@ export function parseEnvForm(body) {
 export function manageRoutes(ctx) {
   const { queue, projects, kube } = ctx;
   const r = Router();
-  const load = withProject(ctx);
+  const load = (action) => withProject(ctx, action);
   let activeLogStreams = 0;
 
   const back = (req, res, tab) => res.redirect(`/projects/${req.project.id}/${tab}`);
@@ -49,23 +49,24 @@ export function manageRoutes(ctx) {
     back(req, res, tab);
   };
   const enqueue = (req, kind) =>
-    queue.enqueue({ projectId: req.project.id, kind, triggeredBy: req.user.username, userId: req.user.id, tag: req.project.current_tag });
+    queue.enqueue({ projectId: req.project.id, kind, triggeredBy: req.user.username, userId: req.user.id, ip: req.ip, tag: req.project.current_tag });
 
   // --- Variables ---------------------------------------------------------------
 
-  r.get('/projects/:id/env', requireAuth, load, (req, res) => {
+  r.get('/projects/:id/env', load('project.view'), (req, res) => {
     res.page(
       `${req.project.name} · variables`,
-      envView({ project: req.project, keys: projects.envKeys(req.project), csrfToken: res.locals.csrfToken, isAdmin: req.user.role === 'admin', deployed: Boolean(req.project.current_tag) }),
+      envView({ project: req.project, keys: projects.envKeys(req.project), csrfToken: res.locals.csrfToken, can: req.can, deployed: Boolean(req.project.current_tag) }),
       { active: 'projects' },
     );
   });
 
-  r.post('/projects/:id/env', requireAdmin, load, (req, res) => {
+  r.post('/projects/:id/env', load('env.edit'), (req, res) => {
     const p = req.project;
-    let changed;
+    let changed, form;
     try {
-      changed = projects.replaceEnv(p, parseEnvForm(req.body || {}));
+      form = parseEnvForm(req.body || {});
+      changed = projects.replaceEnv(p, form);
     } catch (err) {
       return onValidation(req, res, 'env', err);
     }
@@ -75,6 +76,8 @@ export function manageRoutes(ctx) {
       return back(req, res, 'env');
     }
     ctx.logger.info(`Variables de ${p.name} modificadas por ${req.user.username}`);
+    // Solo nombres: los valores nunca llegan a la auditoría.
+    ctx.audit.record(req, 'env.update', { project: p, detail: [...[...form.set.keys()].map((k) => `=${k}`), ...form.remove.map((k) => `-${k}`)].join(' ') });
     if (apply === 'none' || !p.current_tag) {
       flash(req, 'success', 'Variables guardadas. Se aplicarán en el próximo despliegue.');
       return back(req, res, 'env');
@@ -84,21 +87,22 @@ export function manageRoutes(ctx) {
     res.redirect(`/deployments/${id}`);
   });
 
-  r.post('/projects/:id/env/:key/reveal', requireAdmin, load, (req, res) => {
+  r.post('/projects/:id/env/:key/reveal', load('env.edit'), (req, res) => {
     if (!v.isEnvName(req.params.key)) return res.status(400).json({ error: 'Nombre inválido' });
     const value = projects.envReveal(req.project, req.params.key);
     if (value === null) return res.status(404).json({ error: 'No existe' });
     ctx.logger.info(`${req.user.username} reveló ${req.project.name}/${req.params.key}`);
+    ctx.audit.record(req, 'env.reveal', { project: req.project, detail: req.params.key });
     res.set('Cache-Control', 'no-store').json({ value });
   });
 
   // --- Logs de pods ------------------------------------------------------------
 
-  r.get('/projects/:id/logs', requireAuth, load, (req, res) => {
+  r.get('/projects/:id/logs', load('project.view'), (req, res) => {
     res.page(`${req.project.name} · logs`, logsView({ project: req.project }), { active: 'projects' });
   });
 
-  r.get('/projects/:id/logs/stream', requireAuth, load, (req, res) => {
+  r.get('/projects/:id/logs/stream', load('project.view'), (req, res) => {
     if (activeLogStreams >= MAX_LOG_STREAMS) return res.status(429).json({ error: 'Demasiados streams de logs abiertos' });
     activeLogStreams++;
     const sse = openSse(req, res);
@@ -121,13 +125,13 @@ export function manageRoutes(ctx) {
 
   // --- Escalado, HPA, recursos, reinicio --------------------------------------
 
-  r.get('/projects/:id/settings', requireAuth, load, (req, res) => {
+  r.get('/projects/:id/settings', load('project.view'), (req, res) => {
     res.page(
       `${req.project.name} · ajustes`,
       settingsView({
         project: req.project,
         csrfToken: res.locals.csrfToken,
-        isAdmin: req.user.role === 'admin',
+        can: req.can,
         hasToken: Boolean(req.project.git_token_enc),
         https: { url: projects.httpsUrl(req.project), nodePort: ctx.config.ingressHttpsNodePort, ingressIp: ctx.config.ingressIp, host: projects.host(req.project) },
       }),
@@ -135,7 +139,7 @@ export function manageRoutes(ctx) {
     );
   });
 
-  r.post('/projects/:id/scale', requireAdmin, load, async (req, res) => {
+  r.post('/projects/:id/scale', load('project.settings'), async (req, res) => {
     const p = req.project;
     if (p.autoscaling_enabled) {
       flash(req, 'error', 'El HPA está activo: desactívalo para escalar manualmente.');
@@ -144,6 +148,7 @@ export function manageRoutes(ctx) {
     let replicas;
     try {
       replicas = v.intInRange(req.body.replicas, 0, v.LIMITS.replicas, 'replicas', 'Réplicas');
+      ctx.users.checkProjectChange(p, { replicas });
     } catch (err) {
       return onValidation(req, res, 'settings', err);
     }
@@ -159,14 +164,18 @@ export function manageRoutes(ctx) {
       }
     }
     ctx.logger.info(`${p.name} escalado a ${replicas} por ${req.user.username}`);
+    ctx.audit.record(req, 'project.scale', { project: p, detail: `réplicas=${replicas}` });
     flash(req, 'success', `Réplicas: ${replicas}.${p.current_tag ? '' : ' Se aplicará en el primer despliegue.'}`);
     back(req, res, 'settings');
   });
 
-  r.post('/projects/:id/autoscaling', requireAdmin, load, (req, res) => {
+  r.post('/projects/:id/autoscaling', load('project.settings'), (req, res) => {
     const p = req.project;
     try {
-      projects.update(p, parseScaling({ ...req.body, replicas: p.replicas }, p));
+      const scaling = parseScaling({ ...req.body, replicas: p.replicas }, p);
+      ctx.users.checkProjectChange(p, scaling);
+      projects.update(p, scaling);
+      ctx.audit.record(req, 'project.autoscaling', { project: p, detail: scaling.autoscaling_enabled ? `${scaling.autoscaling_min}-${scaling.autoscaling_max}` : 'off' });
     } catch (err) {
       return onValidation(req, res, 'settings', err);
     }
@@ -177,11 +186,14 @@ export function manageRoutes(ctx) {
     res.redirect(`/deployments/${enqueue(req, 'config')}`);
   });
 
-  r.post('/projects/:id/resources', requireAdmin, load, async (req, res) => {
+  r.post('/projects/:id/resources', load('project.settings'), async (req, res) => {
     const p = req.project;
     let updated;
     try {
-      updated = projects.update(p, parseResources(req.body || {}, p));
+      const resources = parseResources(req.body || {}, p);
+      ctx.users.checkProjectChange(p, resources);
+      updated = projects.update(p, resources);
+      ctx.audit.record(req, 'project.resources', { project: p, detail: `${resources.cpu_limit}/${resources.memory_limit}` });
     } catch (err) {
       return onValidation(req, res, 'settings', err);
     }
@@ -198,7 +210,7 @@ export function manageRoutes(ctx) {
     res.redirect(`/deployments/${enqueue(req, 'config')}`);
   });
 
-  r.post('/projects/:id/restart', requireAdmin, load, (req, res) => {
+  r.post('/projects/:id/restart', load('project.deploy'), (req, res) => {
     if (!req.project.current_tag) {
       flash(req, 'error', 'El proyecto aún no está desplegado.');
       return back(req, res, 'settings');
@@ -206,7 +218,7 @@ export function manageRoutes(ctx) {
     res.redirect(`/deployments/${enqueue(req, 'restart')}`);
   });
 
-  r.post('/projects/:id/git', requireAdmin, load, (req, res) => {
+  r.post('/projects/:id/git', load('project.settings'), (req, res) => {
     const p = req.project;
     if (p.source !== 'git') return res.errorPage(400, 'El proyecto no usa git');
     try {
@@ -216,6 +228,7 @@ export function manageRoutes(ctx) {
       projects.update(p, { repo_url, branch });
       if (req.body.clear_token === 'on') projects.setGitToken(p, '');
       else if (token) projects.setGitToken(p, token);
+      ctx.audit.record(req, 'project.git', { project: p, detail: `${repo_url} ${branch}${token ? ' (token nuevo)' : ''}` });
     } catch (err) {
       return onValidation(req, res, 'settings', err);
     }
@@ -225,7 +238,7 @@ export function manageRoutes(ctx) {
 
   // --- Webhook -----------------------------------------------------------------
 
-  r.get('/projects/:id/webhook', requireAuth, load, (req, res) => {
+  r.get('/projects/:id/webhook', load('project.view'), (req, res) => {
     const p = req.project;
     const recent = ctx.db
       .prepare("SELECT id, status, source_ref, created_at FROM deployments WHERE project_id = ? AND triggered_by = 'webhook:github' ORDER BY id DESC LIMIT 10")
@@ -236,7 +249,7 @@ export function manageRoutes(ctx) {
         project: p,
         url: `${ctx.config.publicBaseUrl}/hooks/github/${p.id}`,
         csrfToken: res.locals.csrfToken,
-        isAdmin: req.user.role === 'admin',
+        can: req.can,
         recent,
         publicBaseUrl: ctx.config.publicBaseUrl,
       }),
@@ -244,14 +257,16 @@ export function manageRoutes(ctx) {
     );
   });
 
-  r.post('/projects/:id/webhook/reveal', requireAdmin, load, (req, res) => {
+  r.post('/projects/:id/webhook/reveal', load('webhook.manage'), (req, res) => {
     ctx.logger.info(`${req.user.username} reveló el secreto del webhook de ${req.project.name}`);
+    ctx.audit.record(req, 'webhook.reveal', { project: req.project });
     res.set('Cache-Control', 'no-store').json({ value: projects.webhookSecret(req.project) });
   });
 
-  r.post('/projects/:id/webhook/rotate', requireAdmin, load, (req, res) => {
+  r.post('/projects/:id/webhook/rotate', load('webhook.manage'), (req, res) => {
     projects.rotateWebhookSecret(req.project);
     ctx.logger.info(`${req.user.username} regeneró el secreto del webhook de ${req.project.name}`);
+    ctx.audit.record(req, 'webhook.rotate', { project: req.project });
     flash(req, 'success', 'Secreto regenerado. Actualízalo en GitHub.');
     back(req, res, 'webhook');
   });

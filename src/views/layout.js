@@ -1,4 +1,5 @@
 import { html } from '../lib/html.js';
+import { can } from '../lib/authz.js';
 
 export function csrfField(token) {
   return html`<input type="hidden" name="_csrf" value="${token}">`;
@@ -22,8 +23,13 @@ export function layout({ title, user, csrfToken, flash = [], body, dryRun = fals
     ${user
       ? html`<nav class="nav">
           <a href="/" class="${active === 'projects' ? 'active' : ''}">Proyectos</a>
-          <a href="/projects/new" class="${active === 'new' ? 'active' : ''}">Nuevo</a>
-          <a href="/settings" class="${active === 'settings' ? 'active' : ''}">Ajustes</a>
+          ${can(user, 'project.create') ? html`<a href="/projects/new" class="${active === 'new' ? 'active' : ''}">Nuevo</a>` : ''}
+          <a href="/account" class="${active === 'account' ? 'active' : ''}">Mi cuenta</a>
+          ${can(user, 'admin.access')
+            ? html`<a href="/admin/users" class="${active === 'admin-users' ? 'active' : ''}">Usuarios</a>
+              <a href="/admin/audit" class="${active === 'admin-audit' ? 'active' : ''}">Auditoría</a>
+              <a href="/settings" class="${active === 'settings' ? 'active' : ''}">Ajustes</a>`
+            : ''}
           <span class="nav-user">${user.username} <small>(${user.role})</small></span>
           <form method="post" action="/logout" class="inline">
             ${csrfField(csrfToken)}

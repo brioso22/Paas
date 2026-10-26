@@ -2,7 +2,8 @@ import { html } from '../lib/html.js';
 import { csrfField } from './layout.js';
 import { projectHeader, statusBadge } from './projects.js';
 
-export function webhookView({ project: p, url, csrfToken, isAdmin, recent, publicBaseUrl }) {
+export function webhookView({ project: p, url, csrfToken, can, recent, publicBaseUrl }) {
+  const canManage = can('webhook.manage');
   return html`${projectHeader(p, 'webhook')}
   <section class="card">
     <h2>Auto-deploy con GitHub</h2>
@@ -17,7 +18,7 @@ export function webhookView({ project: p, url, csrfToken, isAdmin, recent, publi
           <label>Content type <input class="mono" value="application/json" readonly></label>
           <label>Secret
             <span class="copy-row"><input id="hook-secret" class="mono" type="password" value="" placeholder="••••••••••••" readonly>
-            ${isAdmin
+            ${canManage
               ? html`<button type="button" class="btn btn-small" data-reveal-url="/projects/${p.id}/webhook/reveal" data-reveal-target="#hook-secret">Revelar</button>
                 <button type="button" class="btn btn-small" data-copy="#hook-secret">Copiar</button>`
               : ''}</span>
@@ -27,7 +28,7 @@ export function webhookView({ project: p, url, csrfToken, isAdmin, recent, publi
             ? html`<div class="alert alert-warn">PUBLIC_BASE_URL apunta a localhost: GitHub no podrá alcanzar esa URL. Configura una dirección pública (ver docs/PUBLISHING.md).</div>`
             : ''}
         </div>
-        ${isAdmin
+        ${canManage
           ? html`<form method="post" action="/projects/${p.id}/webhook/rotate" data-confirm="El secreto actual dejará de funcionar. ¿Continuar?">
               ${csrfField(csrfToken)}<button class="btn btn-danger btn-small" type="submit">Regenerar secreto</button></form>`
           : ''}`}

@@ -43,26 +43,31 @@ export function metricsView({ project: p, data, prometheusUrl }) {
   <p><a class="btn btn-small" href="/projects/${p.id}/metrics">Actualizar</a></p>`;
 }
 
-export function settingsPageView({ csrfToken, isAdmin, prices, info, user }) {
-  return html`<h1>Ajustes</h1>
+export function settingsPageView({ csrfToken, prices, info, allowRegistration }) {
+  return html`<h1>Ajustes y precios</h1>
+  <section class="card">
+    <h2>Registro de clientes</h2>
+    <form method="post" action="/settings/registration" class="form">
+      ${csrfField(csrfToken)}
+      <label class="check"><input type="checkbox" name="allow_registration" ${allowRegistration ? 'checked' : ''}> Permitir registro abierto en /register</label>
+      <span class="hint">Las cuentas nuevas son de rol cliente con el plan free. Desactivado por defecto.</span>
+      <div><button class="btn btn-primary" type="submit">Guardar</button></div>
+    </form>
+  </section>
   <section class="card">
     <h2>Precios para el cálculo de costos</h2>
     <form method="post" action="/settings/prices" class="form">
       ${csrfField(csrfToken)}
       <div class="grid">
-        <label>USD por núcleo de CPU por hora <input name="cpu_hour" inputmode="decimal" value="${prices.cpuHour}" ${isAdmin ? '' : 'disabled'}></label>
-        <label>USD por GiB de RAM por hora <input name="ram_gb_hour" inputmode="decimal" value="${prices.ramGbHour}" ${isAdmin ? '' : 'disabled'}></label>
+        <label>USD por núcleo de CPU por hora <input name="cpu_hour" inputmode="decimal" value="${prices.cpuHour}" required></label>
+        <label>USD por GiB de RAM por hora <input name="ram_gb_hour" inputmode="decimal" value="${prices.ramGbHour}" required></label>
       </div>
-      ${isAdmin ? html`<div><button class="btn btn-primary" type="submit">Guardar precios</button></div>` : html`<p class="muted">Solo el administrador puede cambiar los precios.</p>`}
+      <div><button class="btn btn-primary" type="submit">Guardar precios</button></div>
     </form>
   </section>
   <section class="card">
     <h2>Configuración del servidor</h2>
     <p class="muted">Se define en el archivo .env (requiere reiniciar el panel). Los secretos no se muestran.</p>
     <dl class="kv">${Object.entries(info).map(([k, v]) => html`<dt class="mono">${k}</dt><dd class="mono">${String(v)}</dd>`)}</dl>
-  </section>
-  <section class="card">
-    <h2>Tu cuenta</h2>
-    <p>${user.username} · rol <strong>${user.role}</strong></p>
   </section>`;
 }

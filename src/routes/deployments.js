@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Router } from 'express';
 import multer from 'multer';
-import { requireAuth, requireAdmin, flash } from '../middleware/security.js';
+import { requireAuth, flash, httpError } from '../middleware/security.js';
+import { can, permsFor } from '../lib/authz.js';
 import { withProject } from './projects.js';
 import { inspectZip, looksLikeZip, ZipError } from '../lib/zip.js';
 import { randomToken } from '../crypto.js';
@@ -29,7 +30,7 @@ export function rollbackableIds(db, project, deployments) {
 export function deploymentRoutes(ctx) {
   const { config, db, queue } = ctx;
   const r = Router();
-  const load = withProject(ctx);
+  const load = (action) => withProject(ctx, action);
   const tmpDir = path.join(config.workspacesDir, '.uploads');
   fs.mkdirSync(tmpDir, { recursive: true, mode: 0o700 });
 
@@ -51,11 +52,11 @@ export function deploymentRoutes(ctx) {
       flash(req, 'warn', 'Ya hay un build en cola para este proyecto.');
       return res.redirect(`/projects/${project.id}/deployments`);
     }
-    const id = queue.enqueue({ projectId: project.id, kind: 'build', triggeredBy: req.user.username, userId: req.user.id, sourceRef, params });
+    const id = queue.enqueue({ projectId: project.id, kind: 'build', triggeredBy: req.user.username, userId: req.user.id, ip: req.ip, sourceRef, params });
     res.redirect(`/deployments/${id}`);
   };
 
-  r.get('/projects/:id/deployments', requireAuth, load, (req, res) => {
+  r.get('/projects/:id/deployments', load('project.view'), (req, res) => {
     const p = req.project;
     const deployments = db.prepare('SELECT * FROM deployments WHERE project_id = ? ORDER BY id DESC LIMIT 50').all(p.id);
     res.page(
@@ -64,7 +65,7 @@ export function deploymentRoutes(ctx) {
         project: p,
         deployments,
         csrfToken: res.locals.csrfToken,
-        isAdmin: req.user.role === 'admin',
+        can: req.can,
         maxUploadMb: config.maxUploadMb,
         rollbackable: rollbackableIds(db, p, deployments),
         hasLastZip: fs.existsSync(workspacePaths(config, p).lastZip),
@@ -74,7 +75,7 @@ export function deploymentRoutes(ctx) {
     );
   });
 
-  r.post('/projects/:id/deploy/zip', requireAdmin, load, (req, res, next) => {
+  r.post('/projects/:id/deploy/zip', load('project.deploy'), (req, res, next) => {
     const p = req.project;
     if (p.source !== 'zip') return res.errorPage(400, 'Este proyecto se despliega desde git');
     upload.single('archive')(req, res, (err) => {
@@ -105,13 +106,13 @@ export function deploymentRoutes(ctx) {
     });
   });
 
-  r.post('/projects/:id/deploy/git', requireAdmin, load, (req, res) => {
+  r.post('/projects/:id/deploy/git', load('project.deploy'), (req, res) => {
     const p = req.project;
     if (p.source !== 'git') return res.errorPage(400, 'Este proyecto se despliega con .zip');
     enqueueBuild(req, res, p, { sourceRef: `${p.branch}` });
   });
 
-  r.post('/projects/:id/deploy/rebuild', requireAdmin, load, (req, res) => {
+  r.post('/projects/:id/deploy/rebuild', load('project.deploy'), (req, res) => {
     const p = req.project;
     if (p.source === 'zip' && !fs.existsSync(workspacePaths(config, p).lastZip)) {
       flash(req, 'error', 'No hay un zip previo; sube uno nuevo.');
@@ -120,17 +121,17 @@ export function deploymentRoutes(ctx) {
     enqueueBuild(req, res, p, { sourceRef: p.source === 'zip' ? 'source.zip (último)' : p.branch });
   });
 
-  r.post('/projects/:id/deploy/apply', requireAdmin, load, (req, res) => {
+  r.post('/projects/:id/deploy/apply', load('project.deploy'), (req, res) => {
     const p = req.project;
     if (!p.current_tag) {
       flash(req, 'error', 'El proyecto aún no tiene una imagen desplegada.');
       return res.redirect(`/projects/${p.id}/deployments`);
     }
-    const id = queue.enqueue({ projectId: p.id, kind: 'config', triggeredBy: req.user.username, userId: req.user.id, tag: p.current_tag });
+    const id = queue.enqueue({ projectId: p.id, kind: 'config', triggeredBy: req.user.username, userId: req.user.id, ip: req.ip, tag: p.current_tag });
     res.redirect(`/deployments/${id}`);
   });
 
-  r.post('/projects/:id/deployments/:depId/rollback', requireAdmin, load, (req, res) => {
+  r.post('/projects/:id/deployments/:depId/rollback', load('project.deploy'), (req, res) => {
     const p = req.project;
     const deployments = db.prepare('SELECT * FROM deployments WHERE project_id = ? ORDER BY id DESC LIMIT 50').all(p.id);
     const target = deployments.find((d) => String(d.id) === String(req.params.depId));
@@ -143,6 +144,7 @@ export function deploymentRoutes(ctx) {
       kind: 'rollback',
       triggeredBy: req.user.username,
       userId: req.user.id,
+      ip: req.ip,
       tag: target.tag,
       rollbackOf: target.id,
       sourceRef: `rollback a #${target.id} (rev. ${target.helm_revision})`,
@@ -152,9 +154,12 @@ export function deploymentRoutes(ctx) {
 
   const loadDeployment = (req, res, next) => {
     const d = /^\d{1,10}$/.test(req.params.id) ? db.prepare('SELECT * FROM deployments WHERE id = ?').get(Number(req.params.id)) : null;
-    if (!d) return res.errorPage(404, 'Despliegue no encontrado');
+    const project = d && ctx.projects.getFor(d.project_id, req.user);
+    // Despliegue de un proyecto ajeno = inexistente.
+    if (!project || !can(req.user, 'project.view', project)) return next(httpError(404, 'Despliegue no encontrado'));
     req.deployment = d;
-    req.project = ctx.projects.get(d.project_id);
+    Object.defineProperty(project, 'can', { value: permsFor(req.user, project), enumerable: false });
+    req.project = project;
     next();
   };
 

@@ -1,7 +1,8 @@
 import { Router } from 'express';
-import { requireAuth, requireAdmin, flash } from '../middleware/security.js';
+import { requireAdmin, flash } from '../middleware/security.js';
 import { withProject } from './projects.js';
 import { metricsView, settingsPageView } from '../views/metrics.js';
+import { getSetting } from '../db.js';
 
 const MAX_PRICE = 1000;
 
@@ -14,18 +15,18 @@ function parsePrice(v, label) {
 export function metricsRoutes(ctx) {
   const { config, metrics } = ctx;
   const r = Router();
-  const load = withProject(ctx);
+  const load = (action) => withProject(ctx, action);
 
-  r.get('/projects/:id/metrics', requireAuth, load, async (req, res) => {
+  r.get('/projects/:id/metrics', load('project.view'), async (req, res) => {
     const data = await metrics.forProject(req.project);
     res.page(`${req.project.name} · métricas`, metricsView({ project: req.project, data, prometheusUrl: config.prometheusUrl }), { active: 'projects' });
   });
 
-  r.get('/projects/:id/metrics.json', requireAuth, load, async (req, res) => {
+  r.get('/projects/:id/metrics.json', load('project.view'), async (req, res) => {
     res.json(await metrics.forProject(req.project));
   });
 
-  r.get('/settings', requireAuth, (req, res) => {
+  r.get('/settings', requireAdmin, (req, res) => {
     const info = {
       DOMAIN: config.domain,
       CHART_PATH: config.chartPath,
@@ -42,7 +43,7 @@ export function metricsRoutes(ctx) {
       COOKIE_SECURE: config.cookieSecure,
       DRY_RUN: config.dryRun,
     };
-    res.page('Ajustes', settingsPageView({ csrfToken: res.locals.csrfToken, isAdmin: req.user.role === 'admin', prices: metrics.prices(), info, user: req.user }), {
+    res.page('Ajustes', settingsPageView({ csrfToken: res.locals.csrfToken, prices: metrics.prices(), info, allowRegistration: getSetting(ctx.db, 'allow_registration', '0') === '1' }), {
       active: 'settings',
     });
   });
@@ -53,6 +54,7 @@ export function metricsRoutes(ctx) {
       const ramGbHour = parsePrice(req.body.ram_gb_hour, 'Precio de RAM');
       metrics.setPrices({ cpuHour, ramGbHour });
       ctx.logger.info(`Precios actualizados por ${req.user.username}: cpu=${cpuHour} ram=${ramGbHour}`);
+      ctx.audit.record(req, 'settings.prices', { detail: `cpu=${cpuHour} ram=${ramGbHour}` });
       flash(req, 'success', 'Precios guardados.');
     } catch (err) {
       flash(req, 'error', err.message);

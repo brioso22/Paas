@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { requireAdmin, flash } from '../middleware/security.js';
+import { flash } from '../middleware/security.js';
 import { withProject } from './projects.js';
 import { ValidationError } from '../lib/validate.js';
 import {
@@ -12,12 +12,13 @@ import {
   explainKubeError,
   DB_ENV_KEYS,
 } from '../services/databases.js';
+import { databaseFootprint } from '../services/users.js';
 import { databasesView } from '../views/databases.js';
 
 export function databaseRoutes(ctx) {
   const { kube, projects, databases, queue } = ctx;
   const r = Router();
-  const load = withProject(ctx);
+  const load = (action) => withProject(ctx, action);
 
   async function render(req, res, status = 200, extra = {}) {
     const p = req.project;
@@ -27,20 +28,21 @@ export function databaseRoutes(ctx) {
     } catch (err) {
       statuses = { error: err.message.slice(0, 200) };
     }
-    res.status(status).page(`${p.name} · bases de datos`, databasesView({ project: p, databases: databases.list(p), statuses, csrfToken: res.locals.csrfToken, ...extra }), {
+    res.status(status).page(`${p.name} · bases de datos`, databasesView({ project: p, databases: databases.list(p), statuses, csrfToken: res.locals.csrfToken, can: req.can, ...extra }), {
       active: 'projects',
     });
   }
 
-  r.get('/projects/:id/databases', requireAdmin, load, (req, res) => render(req, res));
+  r.get('/projects/:id/databases', load('project.view'), (req, res) => render(req, res));
 
-  r.post('/projects/:id/databases', requireAdmin, load, async (req, res) => {
+  r.post('/projects/:id/databases', load('db.manage'), async (req, res) => {
     const p = req.project;
     const body = req.body || {};
     let data;
     try {
       data = parseDbForm(body);
       checkStorageQuota(databases.list(p), data.size_gi);
+      ctx.users.checkQuota(ctx.users.ownerOf(p.id), databaseFootprint(data));
     } catch (err) {
       if (!(err instanceof ValidationError)) throw err;
       return render(req, res, 400, { values: body, error: err.message });
@@ -67,8 +69,9 @@ export function databaseRoutes(ctx) {
 
     projects.replaceEnv(p, { set: connectionEnv(p, d, password) });
     ctx.logger.info(`BD ${d.engine} ${p.name}/${d.name} creada por ${req.user.username}`);
+    ctx.audit.record(req, 'db.create', { project: p, detail: `${d.name} ${d.engine} ${d.size_gi}Gi` });
     if (p.current_tag) {
-      const id = queue.enqueue({ projectId: p.id, kind: 'restart', triggeredBy: req.user.username, userId: req.user.id, tag: p.current_tag });
+      const id = queue.enqueue({ projectId: p.id, kind: 'restart', triggeredBy: req.user.username, userId: req.user.id, ip: req.ip, tag: p.current_tag });
       flash(req, 'success', `Base de datos ${d.name} creada. Reiniciando los pods para inyectar las variables.`);
       return res.redirect(`/deployments/${id}`);
     }
@@ -76,14 +79,15 @@ export function databaseRoutes(ctx) {
     res.redirect(`/projects/${p.id}/databases`);
   });
 
-  r.post('/projects/:id/databases/:dbId/reveal', requireAdmin, load, (req, res) => {
+  r.post('/projects/:id/databases/:dbId/reveal', load('db.manage'), (req, res) => {
     const d = databases.get(req.project, req.params.dbId);
     if (!d) return res.status(404).json({ error: 'No existe' });
     ctx.logger.info(`${req.user.username} reveló la contraseña de la BD ${req.project.name}/${d.name}`);
+    ctx.audit.record(req, 'db.reveal', { project: req.project, detail: d.name });
     res.set('Cache-Control', 'no-store').json({ value: databases.password(req.project, d) });
   });
 
-  r.post('/projects/:id/databases/:dbId/delete', requireAdmin, load, async (req, res) => {
+  r.post('/projects/:id/databases/:dbId/delete', load('db.manage'), async (req, res) => {
     const p = req.project;
     const d = databases.get(p, req.params.dbId);
     if (!d) return res.errorPage(404, 'Base de datos no encontrada');
@@ -103,6 +107,7 @@ export function databaseRoutes(ctx) {
     if (projects.envReveal(p, 'DB_HOST') === internalHost(p, d)) removedEnv = projects.replaceEnv(p, { remove: DB_ENV_KEYS.filter((k) => projects.envReveal(p, k) !== null) });
     await kube.ensureTenant(p).catch((err) => ctx.logger.warn(`No se pudo reducir la cuota de ${p.name}: ${err.message}`));
     ctx.logger.info(`BD ${p.name}/${d.name} eliminada por ${req.user.username}`);
+    ctx.audit.record(req, 'db.delete', { project: p, detail: d.name });
     flash(req, 'success', `Base de datos ${d.name} eliminada.${removedEnv ? ' Se quitaron sus variables DB_* del proyecto (se aplicarán en el próximo reinicio o despliegue).' : ''}`);
     res.redirect(`/projects/${p.id}/databases`);
   });

@@ -49,18 +49,52 @@ export function createProjectStore({ db, cipher, config }) {
   const touch = db.prepare("UPDATE projects SET updated_at = datetime('now') WHERE id = ?");
 
   const store = {
-    list() {
+    /** Proyectos visibles para `user`: todos si es admin, si no solo aquellos de los que es miembro. */
+    list(user) {
+      const cols = `p.*, (SELECT COUNT(*) FROM env_vars e WHERE e.project_id = p.id) AS env_count,
+        (SELECT u.username FROM project_members o JOIN users u ON u.id = o.user_id WHERE o.project_id = p.id AND o.role = 'owner') AS owner_name`;
+      if (user?.role === 'admin')
+        return db.prepare(`SELECT ${cols}, (SELECT role FROM project_members m WHERE m.project_id = p.id AND m.user_id = ?) AS member_role FROM projects p ORDER BY p.name`).all(user.id);
+      if (!user) return [];
       return db
-        .prepare(
-          `SELECT p.*, (SELECT COUNT(*) FROM env_vars e WHERE e.project_id = p.id) AS env_count
-           FROM projects p ORDER BY p.name`,
-        )
-        .all();
+        .prepare(`SELECT ${cols}, m.role AS member_role FROM projects p JOIN project_members m ON m.project_id = p.id WHERE m.user_id = ? ORDER BY p.name`)
+        .all(user.id);
     },
 
     get(id) {
       if (!/^\d{1,10}$/.test(String(id))) return null;
       return db.prepare('SELECT * FROM projects WHERE id = ?').get(Number(id)) || null;
+    },
+
+    /** El proyecto con `member_role` del usuario, o null si no lo puede ver (evita IDOR). */
+    getFor(id, user) {
+      const p = store.get(id);
+      if (!p || !user) return null;
+      p.member_role = db.prepare('SELECT role FROM project_members WHERE project_id = ? AND user_id = ?').pluck().get(p.id, user.id) || null;
+      return p.member_role || user.role === 'admin' ? p : null;
+    },
+
+    // --- Miembros ------------------------------------------------------------------
+
+    members(project) {
+      return db
+        .prepare(
+          `SELECT m.role, m.created_at, u.id AS user_id, u.username, u.role AS global_role, u.active
+           FROM project_members m JOIN users u ON u.id = m.user_id WHERE m.project_id = ?
+           ORDER BY CASE m.role WHEN 'owner' THEN 0 WHEN 'deployer' THEN 1 ELSE 2 END, u.username`,
+        )
+        .all(project.id);
+    },
+
+    setMember(project, userId, role) {
+      db.prepare(
+        `INSERT INTO project_members (project_id, user_id, role) VALUES (?, ?, ?)
+         ON CONFLICT(project_id, user_id) DO UPDATE SET role = excluded.role`,
+      ).run(project.id, userId, role);
+    },
+
+    removeMember(project, userId) {
+      return db.prepare("DELETE FROM project_members WHERE project_id = ? AND user_id = ? AND role != 'owner'").run(project.id, userId).changes > 0;
     },
 
     getByName(name) {
@@ -142,6 +176,7 @@ export function createProjectStore({ db, cipher, config }) {
             custom_domain: data.custom_domain ?? null,
           }).lastInsertRowid;
         const project = store.get(id);
+        if (userId) store.setMember(project, userId, 'owner');
         store.replaceEnv(project, { set: data.env || new Map() });
         return project;
       })();

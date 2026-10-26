@@ -15,6 +15,8 @@ import { createMetrics } from './services/metrics.js';
 import { createPublisher } from './services/publisher/index.js';
 import { createDatabaseStore } from './services/databases.js';
 import { createTls } from './services/tls.js';
+import { createUserStore } from './services/users.js';
+import { createAudit } from './services/audit.js';
 
 export function createLogger(prefix = 'paas-panel') {
   const ts = () => new Date().toISOString();
@@ -47,6 +49,8 @@ export function createContext(config, { logger = createLogger(), exec, now = () 
       ctx.db.close();
     },
   };
+  ctx.audit = createAudit(ctx);
+  ctx.users = createUserStore(ctx);
   ctx.kube = createKube(ctx);
   ctx.projects = createProjectStore(ctx);
   ctx.databases = createDatabaseStore(ctx);
@@ -60,5 +64,16 @@ export function createContext(config, { logger = createLogger(), exec, now = () 
   ctx.deployer = createDeployer(ctx);
   ctx.queue = createQueue({ db: ctx.db, logger, runner: (dep, io) => ctx.deployer(dep, io), maxLogBytes: config.maxLogBytes });
   ctx.queue.recover();
+  // Todo despliegue encolado (UI o webhook) queda en la auditoría.
+  const enqueue = ctx.queue.enqueue;
+  ctx.queue.enqueue = (job) => {
+    const id = enqueue(job);
+    ctx.audit.record({ user: job.userId ? { id: job.userId } : null, ip: job.ip }, `deploy.${job.kind}`, {
+      project: ctx.projects.get(job.projectId),
+      username: job.triggeredBy,
+      detail: `#${id}${job.sourceRef ? ` ${job.sourceRef}` : ''}`,
+    });
+    return id;
+  };
   return ctx;
 }

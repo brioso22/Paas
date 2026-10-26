@@ -149,6 +149,14 @@ export function username(v) {
   return v;
 }
 
+/** Correo opcional: vacío = null. Solo una comprobación de forma, no se envía nada. */
+export function email(v) {
+  const e = String(v ?? '').trim().toLowerCase();
+  if (!e) return null;
+  if (e.length > 254 || !/^[^\s@<>"']+@[a-z0-9.-]+\.[a-z]{2,63}$/.test(e)) throw new ValidationError('Correo inválido', 'email');
+  return e;
+}
+
 export function password(v) {
   if (typeof v !== 'string' || v.length < LIMITS.passwordMin || v.length > LIMITS.passwordMax)
     throw new ValidationError(`La contraseña debe tener entre ${LIMITS.passwordMin} y ${LIMITS.passwordMax} caracteres`, 'password');

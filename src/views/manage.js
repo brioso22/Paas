@@ -2,8 +2,9 @@ import { html } from '../lib/html.js';
 import { csrfField } from './layout.js';
 import { projectHeader } from './projects.js';
 
-export function envView({ project: p, keys, csrfToken, isAdmin, deployed }) {
-  const ro = !isAdmin;
+export function envView({ project: p, keys, csrfToken, can, deployed }) {
+  const canEdit = can('env.edit');
+  const ro = !canEdit;
   return html`${projectHeader(p, 'env')}
   <section class="card">
     <h2>Variables de entorno</h2>
@@ -18,14 +19,14 @@ export function envView({ project: p, keys, csrfToken, isAdmin, deployed }) {
             <input class="mono" value="${k.key}" readonly aria-label="Nombre">
             <input type="hidden" name="existing_key" value="${k.key}">
             <input id="env-val-${i}" class="mono" type="password" name="existing_value" placeholder="•••••• (sin cambios)" autocomplete="off" ${ro ? 'disabled' : ''} aria-label="Nuevo valor de ${k.key}">
-            ${isAdmin
+            ${canEdit
               ? html`<button type="button" class="btn btn-small" data-reveal-url="/projects/${p.id}/env/${encodeURIComponent(k.key)}/reveal" data-reveal-target="#env-val-${i}">Revelar</button>
                 <label class="check"><input type="checkbox" name="delete" value="${k.key}"> borrar</label>`
               : html`<span></span><span></span>`}
           </div>`,
         )}
       </div>
-      ${isAdmin
+      ${canEdit
         ? html`<template id="env-new-row"><div class="env-row">
             <input class="mono" name="new_key" placeholder="NUEVA_VARIABLE" pattern="[A-Z_][A-Z0-9_]*" autocomplete="off">
             <input class="mono" name="new_value" placeholder="valor" autocomplete="off">
@@ -57,8 +58,12 @@ export function logsView({ project: p }) {
   </section>`;
 }
 
-export function settingsView({ project: p, csrfToken, isAdmin, hasToken, https }) {
-  const dis = isAdmin ? '' : 'disabled';
+export function settingsView({ project: p, csrfToken, can, hasToken, https }) {
+  const canSettings = can('project.settings');
+  const dis = canSettings ? '' : 'disabled';
+  const canTls = can('tls.manage');
+  const disTls = canTls ? '' : 'disabled';
+  const canDeploy = can('project.deploy');
   return html`${projectHeader(p, 'settings')}
   <div class="grid">
     <section class="card">
@@ -69,7 +74,7 @@ export function settingsView({ project: p, csrfToken, isAdmin, hasToken, https }
             ${csrfField(csrfToken)}
             <label>Réplicas <input type="number" name="replicas" min="0" max="20" value="${p.replicas}" ${dis}></label>
             <span class="hint">Se aplica al momento con kubectl scale y se guarda para próximos despliegues. 0 = apagar.</span>
-            ${isAdmin ? html`<div><button class="btn btn-primary" type="submit">Escalar</button></div>` : ''}
+            ${canSettings ? html`<div><button class="btn btn-primary" type="submit">Escalar</button></div>` : ''}
           </form>`}
     </section>
 
@@ -84,7 +89,7 @@ export function settingsView({ project: p, csrfToken, isAdmin, hasToken, https }
           <label>% CPU objetivo <input type="number" name="autoscaling_cpu" min="10" max="100" value="${p.autoscaling_cpu}" ${dis}></label>
         </div>
         <span class="hint">Requiere metrics-server en el clúster. Se aplica con helm upgrade (sin reconstruir).</span>
-        ${isAdmin ? html`<div><button class="btn btn-primary" type="submit">Guardar HPA</button></div>` : ''}
+        ${canSettings ? html`<div><button class="btn btn-primary" type="submit">Guardar HPA</button></div>` : ''}
       </form>
     </section>
 
@@ -99,7 +104,7 @@ export function settingsView({ project: p, csrfToken, isAdmin, hasToken, https }
           <label>Límite de memoria <input name="memory_limit" value="${p.memory_limit}" ${dis}></label>
         </div>
         <span class="hint">Recalcula la ResourceQuota y el LimitRange del namespace y redespliega con Helm.</span>
-        ${isAdmin ? html`<div><button class="btn btn-primary" type="submit">Guardar recursos</button></div>` : ''}
+        ${canSettings ? html`<div><button class="btn btn-primary" type="submit">Guardar recursos</button></div>` : ''}
       </form>
     </section>
 
@@ -107,9 +112,9 @@ export function settingsView({ project: p, csrfToken, isAdmin, hasToken, https }
       <h2>Dominio personalizado</h2>
       <form method="post" action="/projects/${p.id}/domain" class="form">
         ${csrfField(csrfToken)}
-        <label>Dominio <input name="custom_domain" value="${p.custom_domain || ''}" placeholder="app.midominio.com" ${dis}></label>
+        <label>Dominio <input name="custom_domain" value="${p.custom_domain || ''}" placeholder="app.midominio.com" ${disTls}></label>
         <span class="hint">Host adicional del ingress (y del certificado si HTTPS está activo). Vacío = quitarlo. Requiere redeploy con Helm.</span>
-        ${isAdmin ? html`<div><button class="btn btn-primary" type="submit">Guardar dominio</button></div>` : ''}
+        ${canTls ? html`<div><button class="btn btn-primary" type="submit">Guardar dominio</button></div>` : ''}
       </form>
     </section>
 
@@ -119,7 +124,7 @@ export function settingsView({ project: p, csrfToken, isAdmin, hasToken, https }
         ? html`<p><span class="badge badge-ok">activo</span> <a class="mono" href="${https.url}" target="_blank" rel="noopener noreferrer">${https.url}</a></p>
             <p class="hint">Expira: ${p.tls_expires_at ? p.tls_expires_at.slice(0, 10) : '—'}. Prueba: <span class="mono">curl --cacert paas-ca.crt --resolve ${https.host}:${https.nodePort}:${https.ingressIp} https://${https.host}:${https.nodePort}/</span></p>`
         : html`<p class="muted">Emite un certificado para <span class="mono">${https.host}</span>${p.custom_domain ? html` y <span class="mono">${p.custom_domain}</span>` : ''} firmado por la CA del panel (365 días) y lo sirve el ingress.</p>`}
-      ${isAdmin
+      ${canTls
         ? html`<div class="row">
             ${p.tls_enabled
               ? html`<form method="post" action="/projects/${p.id}/tls/renew" class="inline">${csrfField(csrfToken)}<button class="btn" type="submit">Renovar certificado</button></form>
@@ -132,14 +137,14 @@ export function settingsView({ project: p, csrfToken, isAdmin, hasToken, https }
 
     <section class="card">
       <h2>Acciones</h2>
-      ${isAdmin
+      ${canDeploy
         ? html`<form method="post" action="/projects/${p.id}/restart" class="form" data-confirm="¿Reiniciar todos los pods de ${p.name}?">
             ${csrfField(csrfToken)}
             <p class="muted">Rollout restart: crea pods nuevos y retira los viejos sin cortar el servicio (si hay más de una réplica).</p>
             <div><button class="btn" type="submit" ${p.current_tag ? '' : 'disabled'}>Reiniciar pods</button></div>
           </form>
           <p><a href="/projects/${p.id}/deployments">Redesplegar o hacer rollback →</a></p>`
-        : html`<p class="muted">Solo el administrador puede ejecutar acciones.</p>`}
+        : html`<p class="muted">Tu rol en este proyecto es de solo lectura.</p>`}
     </section>
 
     ${p.source === 'git'
@@ -152,8 +157,8 @@ export function settingsView({ project: p, csrfToken, isAdmin, hasToken, https }
             <label>Token de acceso
               <input type="password" name="git_token" placeholder="${hasToken ? '•••••• (guardado; vacío = sin cambios)' : 'sin token'}" autocomplete="off" ${dis}>
             </label>
-            ${hasToken && isAdmin ? html`<label class="check"><input type="checkbox" name="clear_token"> Eliminar el token guardado</label>` : ''}
-            ${isAdmin ? html`<div><button class="btn btn-primary" type="submit">Guardar</button></div>` : ''}
+            ${hasToken && canSettings ? html`<label class="check"><input type="checkbox" name="clear_token"> Eliminar el token guardado</label>` : ''}
+            ${canSettings ? html`<div><button class="btn btn-primary" type="submit">Guardar</button></div>` : ''}
           </form>
         </section>`
       : ''}

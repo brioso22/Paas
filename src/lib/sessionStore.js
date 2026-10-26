@@ -61,6 +61,11 @@ export class SqliteSessionStore extends session.Store {
     }
   }
 
+  /** Cierra todas las sesiones de un usuario (desactivación, cambio de rol, contraseña). */
+  destroyUser(userId) {
+    return this.stmts.destroyUser.run(userId).changes;
+  }
+
   prune() {
     return this.stmts.prune.run(Date.now()).changes;
   }

@@ -1,4 +1,5 @@
 import { randomToken, safeEqual } from '../crypto.js';
+import { can } from '../lib/authz.js';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
@@ -33,10 +34,12 @@ export function csrfProtection({ exempt = [] } = {}) {
 }
 
 export function loadUser(db) {
-  const stmt = db.prepare('SELECT id, username, role FROM users WHERE id = ?');
+  const stmt = db.prepare('SELECT id, username, email, role, active, must_change_password, plan_id FROM users WHERE id = ?');
   return (req, res, next) => {
     const id = req.session?.userId;
     req.user = id ? stmt.get(id) || null : null;
+    // Usuario borrado o desactivado: la sesión deja de valer al momento.
+    if (req.user && !req.user.active) req.user = null;
     if (id && !req.user) delete req.session.userId;
     res.locals.user = req.user;
     next();
@@ -47,6 +50,10 @@ function wantsJson(req) {
   return req.xhr || (req.get('accept') || '').includes('application/json') || req.path.endsWith('.json');
 }
 
+export function httpError(status, message) {
+  return Object.assign(new Error(message), { status });
+}
+
 export function requireAuth(req, res, next) {
   if (req.user) return next();
   if (wantsJson(req)) return res.status(401).json({ error: 'No autenticado' });
@@ -54,17 +61,26 @@ export function requireAuth(req, res, next) {
   res.redirect(`/login${back}`);
 }
 
-export function requireRole(role) {
+/** Con contraseña temporal solo se puede ir a Mi cuenta (y salir). */
+export function forcePasswordChange(req, res, next) {
+  if (!req.user?.must_change_password || /^\/(account|logout|static\/)/.test(req.path)) return next();
+  if (wantsJson(req)) return res.status(403).json({ error: 'Debes cambiar tu contraseña' });
+  res.redirect('/account');
+}
+
+/**
+ * Acción global (sin proyecto). Las páginas de administración responden 404 a quien no
+ * es admin: ni siquiera se revela que existen.
+ */
+export function requirePermission(action) {
   return (req, res, next) => {
     if (!req.user) return requireAuth(req, res, next);
-    if (req.user.role === role || req.user.role === 'admin') return next();
-    const err = new Error('No tienes permisos para esta acción');
-    err.status = 403;
-    next(err);
+    if (can(req.user, action)) return next();
+    next(action.startsWith('admin.') ? httpError(404, 'Página no encontrada') : httpError(403, 'No tienes permisos para esta acción'));
   };
 }
 
-export const requireAdmin = requireRole('admin');
+export const requireAdmin = requirePermission('admin.access');
 
 export function flash(req, type, message) {
   req.session.flash = [...(req.session.flash || []), { type, message }];

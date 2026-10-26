@@ -11,7 +11,8 @@ function statusCell(st) {
     <br><small>PVC: ${st.pvc || '—'}${st.capacity ? ` (${st.capacity})` : ''}</small>`;
 }
 
-export function databasesView({ project: p, databases, statuses, csrfToken, values = {}, error, conflicts = [] }) {
+export function databasesView({ project: p, databases, statuses, csrfToken, can, values = {}, error, conflicts = [] }) {
+  const manage = can('db.manage');
   const engine = values.engine || 'postgres';
   return html`${projectHeader(p, 'databases')}
   <section class="card table-wrap">
@@ -19,7 +20,7 @@ export function databasesView({ project: p, databases, statuses, csrfToken, valu
     ${databases.length === 0
       ? html`<p class="muted">Este proyecto no tiene bases de datos.</p>`
       : html`<table>
-        <thead><tr><th>Nombre</th><th>Motor</th><th>Disco</th><th>Estado</th><th>Host interno</th><th>Contraseña</th><th></th></tr></thead>
+        <thead><tr><th>Nombre</th><th>Motor</th><th>Disco</th><th>Estado</th><th>Host interno</th>${manage ? html`<th>Contraseña</th><th></th>` : ''}</tr></thead>
         <tbody>${databases.map(
           (d) => html`<tr>
             <td><strong>${d.name}</strong><br><small>${d.cpu_limit} / ${d.memory_limit}</small></td>
@@ -27,7 +28,7 @@ export function databasesView({ project: p, databases, statuses, csrfToken, valu
             <td>${d.size_gi} Gi</td>
             <td>${statusCell(statuses[d.name] || (statuses.dryRun ? statuses : statuses.error ? statuses : null))}</td>
             <td class="mono"><small>${internalHost(p, d)}:${DB_ENGINES[d.engine].port}</small></td>
-            <td><span class="copy-row">
+            ${manage ? html`<td><span class="copy-row">
               <input id="db-pw-${d.id}" class="mono" type="password" readonly placeholder="••••••">
               <button type="button" class="btn btn-small" data-reveal-url="/projects/${p.id}/databases/${d.id}/reveal" data-reveal-target="#db-pw-${d.id}">Revelar</button>
               <button type="button" class="btn btn-small" data-copy="#db-pw-${d.id}">Copiar</button>
@@ -36,11 +37,11 @@ export function databasesView({ project: p, databases, statuses, csrfToken, valu
               ${csrfField(csrfToken)}
               <input name="confirm_name" placeholder="${d.name}" required autocomplete="off" aria-label="Escribe ${d.name} para confirmar">
               <button class="btn btn-danger btn-small" type="submit">Eliminar</button>
-            </form></td>
+            </form></td>` : ''}
           </tr>`,
         )}</tbody></table>`}
   </section>
-  <section class="card">
+  ${manage ? html`<section class="card">
     <h2>Nueva base de datos</h2>
     ${error ? html`<div class="alert alert-error">${error}</div>` : ''}
     <form method="post" action="/projects/${p.id}/databases" class="form">
@@ -67,5 +68,5 @@ export function databasesView({ project: p, databases, statuses, csrfToken, valu
         : ''}
       <div><button class="btn btn-primary" type="submit">Crear base de datos</button></div>
     </form>
-  </section>`;
+  </section>` : ''}`;
 }

@@ -4,7 +4,7 @@ import express from 'express';
 import session from 'express-session';
 import helmet from 'helmet';
 import { SqliteSessionStore } from './lib/sessionStore.js';
-import { csrfProtection, loadUser, takeFlash } from './middleware/security.js';
+import { csrfProtection, loadUser, takeFlash, forcePasswordChange } from './middleware/security.js';
 import { layout, errorPage } from './views/layout.js';
 import { authRoutes } from './routes/auth.js';
 import { healthRoutes } from './routes/health.js';
@@ -15,6 +15,9 @@ import { webhookRoutes } from './routes/webhooks.js';
 import { metricsRoutes } from './routes/metrics.js';
 import { databaseRoutes } from './routes/databases.js';
 import { tlsRoutes } from './routes/tls.js';
+import { accountRoutes } from './routes/account.js';
+import { adminRoutes } from './routes/admin.js';
+import { memberRoutes } from './routes/members.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const SESSION_COOKIE = 'paas.sid';
@@ -105,8 +108,12 @@ export function createApp(ctx) {
   });
 
   app.use(csrfProtection());
+  app.use(forcePasswordChange);
 
   app.use(authRoutes(ctx));
+  app.use(accountRoutes(ctx));
+  app.use(adminRoutes(ctx));
+  app.use(memberRoutes(ctx));
   app.use(projectRoutes(ctx));
   app.use(deploymentRoutes(ctx));
   app.use(manageRoutes(ctx));

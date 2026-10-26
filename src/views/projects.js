@@ -28,13 +28,13 @@ export function desiredReplicas(p) {
   return p.autoscaling_enabled ? `${p.autoscaling_min}–${p.autoscaling_max} (HPA)` : String(p.replicas);
 }
 
-export function dashboardView({ rows, isAdmin }) {
+export function dashboardView({ rows, canCreate }) {
   return html`<div class="row between">
       <h1>Proyectos</h1>
-      ${isAdmin ? html`<a class="btn btn-primary" href="/projects/new">+ Nuevo proyecto</a>` : ''}
+      ${canCreate ? html`<a class="btn btn-primary" href="/projects/new">+ Nuevo proyecto</a>` : ''}
     </div>
     ${rows.length === 0
-      ? html`<div class="card"><p class="muted">Aún no hay proyectos.${isAdmin ? html` <a href="/projects/new">Crea el primero</a>.` : ''}</p></div>`
+      ? html`<div class="card"><p class="muted">Aún no hay proyectos.${canCreate ? html` <a href="/projects/new">Crea el primero</a>.` : ''}</p></div>`
       : html`<div class="card table-wrap"><table>
           <thead><tr><th>Nombre</th><th>Estado</th><th>Pods</th><th>Réplicas</th><th>Origen</th><th>URL pública</th></tr></thead>
           <tbody>
@@ -129,6 +129,8 @@ export const PROJECT_TABS = [
   ['settings', 'Escalado y ajustes'],
   ['metrics', 'Métricas y costos'],
   ['webhook', 'Webhook'],
+  ['members', 'Miembros'],
+  ['activity', 'Actividad', 'project.audit'],
 ];
 
 export function projectHeader(project, active, tabs = PROJECT_TABS) {
@@ -136,11 +138,11 @@ export function projectHeader(project, active, tabs = PROJECT_TABS) {
       <h1>${project.name} ${statusBadge(project.status)}</h1>
     </div>
     <nav class="tabs">
-      ${tabs.map(([path, label]) => html`<a href="/projects/${project.id}${path ? '/' + path : ''}" class="${active === path ? 'active' : ''}">${label}</a>`)}
+      ${tabs.filter(([, , action]) => !action || project.can?.(action)).map(([path, label]) => html`<a href="/projects/${project.id}${path ? '/' + path : ''}" class="${active === path ? 'active' : ''}">${label}</a>`)}
     </nav>`;
 }
 
-export function projectOverviewView({ project: p, pods, url, ingressTest, csrfToken, isAdmin, lastDeployment, publication, summary, extra = '' }) {
+export function projectOverviewView({ project: p, pods, url, ingressTest, csrfToken, can, lastDeployment, publication, summary, extra = '' }) {
   return html`${projectHeader(p, '')}
   ${summary
     ? html`<section class="card">
@@ -195,7 +197,7 @@ export function projectOverviewView({ project: p, pods, url, ingressTest, csrfTo
         )}</tbody></table></section>`
     : ''}
   ${extra}
-  ${isAdmin
+  ${can('project.delete')
     ? html`<section class="card">
         <h2>Zona de peligro</h2>
         <p class="muted">Elimina la release de Helm, el namespace <span class="mono">${p.namespace}</span> con todo su contenido, las imágenes y el historial.</p>

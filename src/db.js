@@ -136,6 +136,76 @@ export const MIGRATIONS = [
       ALTER TABLE projects ADD COLUMN custom_domain TEXT;
     `,
   },
+  {
+    version: 6,
+    name: 'multiusuario: roles, planes, membresías y auditoría',
+    // Reconstruir users (cambia el CHECK de rol y quita el índice de admin único) exige
+    // desactivar las claves foráneas: con ellas activas, DROP TABLE dispararía los SET NULL.
+    foreignKeysOff: true,
+    up: `
+      CREATE TABLE plans (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        max_projects INTEGER,        -- NULL = sin límite
+        max_cpu_millicores INTEGER,
+        max_memory_mi INTEGER,
+        max_db_gi INTEGER
+      );
+      INSERT INTO plans (name, max_projects, max_cpu_millicores, max_memory_mi, max_db_gi) VALUES
+        ('free', 2, 1000, 1024, 2),
+        ('pro', 10, 4000, 8192, 20),
+        ('ilimitado', NULL, NULL, NULL, NULL);
+
+      CREATE TABLE users_new (
+        id INTEGER PRIMARY KEY,
+        username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+        email TEXT,
+        password_hash TEXT NOT NULL,
+        role TEXT NOT NULL CHECK (role IN ('admin', 'user', 'viewer')),
+        active INTEGER NOT NULL DEFAULT 1,
+        must_change_password INTEGER NOT NULL DEFAULT 0,
+        plan_id INTEGER REFERENCES plans(id),
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        last_login TEXT
+      );
+      INSERT INTO users_new (id, username, password_hash, role, plan_id, created_at, last_login)
+        SELECT id, username, password_hash, role,
+          (SELECT id FROM plans WHERE name = CASE users.role WHEN 'admin' THEN 'ilimitado' ELSE 'free' END),
+          created_at, last_login_at
+        FROM users;
+      DROP TABLE users;
+      ALTER TABLE users_new RENAME TO users;
+
+      CREATE TABLE project_members (
+        project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        role TEXT NOT NULL CHECK (role IN ('owner', 'deployer', 'viewer')),
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (project_id, user_id)
+      );
+      CREATE INDEX project_members_user ON project_members(user_id);
+      CREATE UNIQUE INDEX project_members_one_owner ON project_members(project_id) WHERE role = 'owner';
+      INSERT INTO project_members (project_id, user_id, role)
+        SELECT p.id, a.id, 'owner' FROM projects p
+        JOIN (SELECT id FROM users WHERE role = 'admin' ORDER BY id LIMIT 1) a;
+
+      -- Sin FK a projects: el historial sobrevive al borrado del proyecto.
+      CREATE TABLE audit_log (
+        id INTEGER PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        username TEXT,
+        action TEXT NOT NULL,
+        project_id INTEGER,
+        project_name TEXT,
+        detail TEXT,
+        ip TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX audit_created ON audit_log(created_at DESC);
+      CREATE INDEX audit_project ON audit_log(project_id, id DESC);
+    `,
+  },
 ];
 
 export function openDb(file, migrations = MIGRATIONS) {
@@ -157,10 +227,18 @@ export function migrate(db, migrations = MIGRATIONS) {
   const applied = new Set(db.prepare('SELECT version FROM schema_migrations').pluck().all());
   const pending = [...migrations].sort((a, b) => a.version - b.version).filter((m) => !applied.has(m.version));
   for (const m of pending) {
-    db.transaction(() => {
-      db.exec(m.up);
-      db.prepare('INSERT INTO schema_migrations (version, name) VALUES (?, ?)').run(m.version, m.name);
-    })();
+    // PRAGMA foreign_keys no tiene efecto dentro de una transacción: se cambia antes.
+    const fkWasOn = db.pragma('foreign_keys', { simple: true }) === 1;
+    if (m.foreignKeysOff) db.pragma('foreign_keys = OFF');
+    try {
+      db.transaction(() => {
+        db.exec(m.up);
+        if (m.foreignKeysOff && db.pragma('foreign_key_check').length) throw new Error(`La migración ${m.version} rompe claves foráneas`);
+        db.prepare('INSERT INTO schema_migrations (version, name) VALUES (?, ?)').run(m.version, m.name);
+      })();
+    } finally {
+      if (m.foreignKeysOff && fkWasOn) db.pragma('foreign_keys = ON');
+    }
   }
   return pending.map((m) => m.version);
 }
