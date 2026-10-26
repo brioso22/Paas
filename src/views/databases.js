@@ -6,9 +6,11 @@ import { DB_ENGINES, DB_SIZES, internalHost } from '../services/databases.js';
 function statusCell(st) {
   if (!st || st.dryRun) return html`<span class="muted" title="DRY_RUN: no se consulta el clúster">n/d</span>`;
   if (st.error) return html`<span class="badge badge-error" title="${st.error}">sin acceso</span>`;
-  if (!st.pvc && !st.ready) return html`<span class="badge badge-warn">sin recursos</span>`;
-  return html`<span class="badge ${st.ready ? 'badge-ok' : 'badge-warn'}">${st.ready ? 'lista' : 'iniciando'}</span>
-    <br><small>PVC: ${st.pvc || '—'}${st.capacity ? ` (${st.capacity})` : ''}</small>`;
+  if (!st.exists && !st.pvc) return html`<span class="badge badge-warn">sin recursos</span>`;
+  const failing = !st.ready && /CrashLoopBackOff|OOMKilled|Error|ImagePull/.test(st.reason || '');
+  const label = st.ready ? 'lista' : failing ? 'con errores' : 'iniciando';
+  return html`<span class="badge ${st.ready ? 'badge-ok' : failing ? 'badge-error' : 'badge-warn'}">${label}</span>
+    <br><small>PVC: ${st.pvc || '—'}${st.capacity ? ` (${st.capacity})` : ''}${!st.ready && st.reason ? ` · ${st.reason}` : ''}${st.restarts ? ` · ${st.restarts} reinicio(s)` : ''}</small>`;
 }
 
 export function databasesView({ project: p, databases, statuses, csrfToken, can, values = {}, error, conflicts = [] }) {

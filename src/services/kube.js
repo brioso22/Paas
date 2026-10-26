@@ -96,9 +96,9 @@ export function createKube({ exec, db }) {
       );
     },
 
-    /** Estado de las BDs del namespace en una sola llamada: { [nombre]: { ready, pvc, capacity } }. */
+    /** Estado de las BDs del namespace en una sola llamada: { [nombre]: { exists, ready, pvc, capacity, reason, restarts } }. */
     async databaseStatus(project) {
-      const r = await kubectl(['get', 'statefulsets,persistentvolumeclaims', '-n', project.namespace, '-l', 'paas/db', '-o', 'json', REQUEST_TIMEOUT], {
+      const r = await kubectl(['get', 'statefulsets,persistentvolumeclaims,pods', '-n', project.namespace, '-l', 'paas/db', '-o', 'json', REQUEST_TIMEOUT], {
         timeoutMs: 20_000,
       });
       if (r.dryRun) return { dryRun: true };
@@ -106,11 +106,20 @@ export function createKube({ exec, db }) {
       for (const it of JSON.parse(r.stdout || '{}').items || []) {
         const name = it.metadata?.labels?.['paas/db'];
         if (!name) continue;
-        out[name] ||= { ready: false, pvc: null, capacity: null };
-        if (it.kind === 'StatefulSet') out[name].ready = (it.status?.readyReplicas || 0) >= 1;
+        out[name] ||= { exists: false, ready: false, pvc: null, capacity: null, reason: null, restarts: 0 };
+        // El StatefulSet crea el PVC y el pod unos segundos después: basta con que exista él.
+        if (it.kind === 'StatefulSet') {
+          out[name].exists = true;
+          out[name].ready = (it.status?.readyReplicas || 0) >= 1;
+        }
         if (it.kind === 'PersistentVolumeClaim') {
           out[name].pvc = it.status?.phase || 'Pending';
           out[name].capacity = it.status?.capacity?.storage || null;
+        }
+        if (it.kind === 'Pod') {
+          const st = it.status?.containerStatuses?.[0];
+          out[name].restarts = st?.restartCount || 0;
+          out[name].reason = st?.state?.waiting?.reason || st?.lastState?.terminated?.reason || (it.status?.phase === 'Pending' ? 'Pending' : null);
         }
       }
       return out;
