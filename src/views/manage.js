@@ -58,11 +58,9 @@ export function logsView({ project: p }) {
   </section>`;
 }
 
-export function settingsView({ project: p, csrfToken, can, hasToken, https }) {
+export function settingsView({ project: p, csrfToken, can, hasToken }) {
   const canSettings = can('project.settings');
   const dis = canSettings ? '' : 'disabled';
-  const canTls = can('tls.manage');
-  const disTls = canTls ? '' : 'disabled';
   const canDeploy = can('project.deploy');
   return html`${projectHeader(p, 'settings')}
   <div class="grid">
@@ -109,6 +107,42 @@ export function settingsView({ project: p, csrfToken, can, hasToken, https }) {
     </section>
 
     <section class="card">
+      <h2>Acciones</h2>
+      ${canDeploy
+        ? html`<form method="post" action="/projects/${p.id}/restart" class="form" data-confirm="¿Reiniciar todos los pods de ${p.name}?">
+            ${csrfField(csrfToken)}
+            <p class="muted">Rollout restart: crea pods nuevos y retira los viejos sin cortar el servicio (si hay más de una réplica).</p>
+            <div><button class="btn" type="submit" ${p.current_tag ? '' : 'disabled'}>Reiniciar pods</button></div>
+          </form>
+          <p><a href="/projects/${p.id}/deployments">Redesplegar o hacer rollback →</a></p>
+          ${p.source === 'git' ? html`<p><a href="/projects/${p.id}/webhook">Auto-deploy con webhook de GitHub →</a></p>` : ''}`
+        : html`<p class="muted">Tu rol en este proyecto es de solo lectura.</p>`}
+    </section>
+
+    ${p.source === 'git'
+      ? html`<section class="card">
+          <h2>Repositorio</h2>
+          <form method="post" action="/projects/${p.id}/git" class="form">
+            ${csrfField(csrfToken)}
+            <label>URL <input name="repo_url" value="${p.repo_url}" ${dis}></label>
+            <label>Rama <input name="branch" value="${p.branch}" ${dis}></label>
+            <label>Token de acceso
+              <input type="password" name="git_token" placeholder="${hasToken ? '•••••• (guardado; vacío = sin cambios)' : 'sin token'}" autocomplete="off" ${dis}>
+            </label>
+            ${hasToken && canSettings ? html`<label class="check"><input type="checkbox" name="clear_token"> Eliminar el token guardado</label>` : ''}
+            ${canSettings ? html`<div><button class="btn btn-primary" type="submit">Guardar</button></div>` : ''}
+          </form>
+        </section>`
+      : ''}
+  </div>`;
+}
+
+export function domainsView({ project: p, csrfToken, can, https }) {
+  const canTls = can('tls.manage');
+  const disTls = canTls ? '' : 'disabled';
+  return html`${projectHeader(p, 'domains')}
+  <div class="grid">
+    <section class="card">
       <h2>Dominio personalizado</h2>
       <form method="post" action="/projects/${p.id}/domain" class="form">
         ${csrfField(csrfToken)}
@@ -135,32 +169,5 @@ export function settingsView({ project: p, csrfToken, can, hasToken, https }) {
       <p class="hint"><a href="/tls/ca.crt">Descargar el certificado de la CA</a> (solo la parte pública). Para que el navegador no avise: Chrome/Edge → Configuración → Privacidad y seguridad → Seguridad → Gestionar certificados → Entidades de certificación → Importar; Firefox → Ajustes → Privacidad → Ver certificados → Autoridades → Importar y marcar "confiar para sitios web". En Linux: <span class="mono">sudo cp paas-ca.crt /usr/local/share/ca-certificates/ && sudo update-ca-certificates</span>.</p>
     </section>
 
-    <section class="card">
-      <h2>Acciones</h2>
-      ${canDeploy
-        ? html`<form method="post" action="/projects/${p.id}/restart" class="form" data-confirm="¿Reiniciar todos los pods de ${p.name}?">
-            ${csrfField(csrfToken)}
-            <p class="muted">Rollout restart: crea pods nuevos y retira los viejos sin cortar el servicio (si hay más de una réplica).</p>
-            <div><button class="btn" type="submit" ${p.current_tag ? '' : 'disabled'}>Reiniciar pods</button></div>
-          </form>
-          <p><a href="/projects/${p.id}/deployments">Redesplegar o hacer rollback →</a></p>`
-        : html`<p class="muted">Tu rol en este proyecto es de solo lectura.</p>`}
-    </section>
-
-    ${p.source === 'git'
-      ? html`<section class="card">
-          <h2>Repositorio</h2>
-          <form method="post" action="/projects/${p.id}/git" class="form">
-            ${csrfField(csrfToken)}
-            <label>URL <input name="repo_url" value="${p.repo_url}" ${dis}></label>
-            <label>Rama <input name="branch" value="${p.branch}" ${dis}></label>
-            <label>Token de acceso
-              <input type="password" name="git_token" placeholder="${hasToken ? '•••••• (guardado; vacío = sin cambios)' : 'sin token'}" autocomplete="off" ${dis}>
-            </label>
-            ${hasToken && canSettings ? html`<label class="check"><input type="checkbox" name="clear_token"> Eliminar el token guardado</label>` : ''}
-            ${canSettings ? html`<div><button class="btn btn-primary" type="submit">Guardar</button></div>` : ''}
-          </form>
-        </section>`
-      : ''}
   </div>`;
 }

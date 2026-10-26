@@ -32,6 +32,20 @@ export async function safePodStatus(ctx, project) {
   }
 }
 
+/** Datos de una tarjeta/fila de proyecto (dashboards de cliente y de admin). Nunca lanza. */
+export async function projectRow(ctx, project) {
+  const [pods, metrics] = await Promise.all([safePodStatus(ctx, project), ctx.metrics.forProject(project)]);
+  return {
+    project,
+    pods,
+    url: ctx.projects.publicUrl(project),
+    stack: ctx.db.prepare('SELECT stack FROM deployments WHERE project_id = ? AND stack IS NOT NULL ORDER BY id DESC LIMIT 1').pluck().get(project.id) || null,
+    lastDeployment: ctx.db.prepare('SELECT id, status, created_at FROM deployments WHERE project_id = ? ORDER BY id DESC LIMIT 1').get(project.id) || null,
+    costHour: metrics.costs.hour,
+    costs: metrics.costs,
+  };
+}
+
 export function ingressTestCommand(ctx, project) {
   const { ingressIp, ingressNodePort } = ctx.config;
   return `curl -H 'Host: ${ctx.projects.host(project)}' http://${ingressIp}:${ingressNodePort}/`;
@@ -43,9 +57,7 @@ export function projectRoutes(ctx) {
 
   r.get('/', requireAuth, async (req, res) => {
     const projects = ctx.projects.list(req.user);
-    const rows = await Promise.all(
-      projects.map(async (project) => ({ project, pods: await safePodStatus(ctx, project), url: ctx.projects.publicUrl(project) })),
-    );
+    const rows = await Promise.all(projects.map((project) => projectRow(ctx, project)));
     res.page('Proyectos', dashboardView({ rows, canCreate: can(req.user, 'project.create') }), { active: 'projects' });
   });
 

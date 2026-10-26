@@ -4,7 +4,7 @@ import { projectHeader, statusBadge } from './projects.js';
 
 export function webhookView({ project: p, url, csrfToken, can, recent, publicBaseUrl }) {
   const canManage = can('webhook.manage');
-  return html`${projectHeader(p, 'webhook')}
+  return html`${projectHeader(p, 'settings')}
   <section class="card">
     <h2>Auto-deploy con GitHub</h2>
     ${p.source !== 'git'

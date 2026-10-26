@@ -4,7 +4,7 @@ import { withProject } from './projects.js';
 import * as v from '../lib/validate.js';
 import { parseResources, parseScaling } from '../services/projects.js';
 import { openSse } from '../lib/sse.js';
-import { envView, logsView, settingsView } from '../views/manage.js';
+import { envView, logsView, settingsView, domainsView } from '../views/manage.js';
 import { webhookView } from '../views/webhook.js';
 
 const MAX_LOG_STREAMS = 5;
@@ -133,6 +133,18 @@ export function manageRoutes(ctx) {
         csrfToken: res.locals.csrfToken,
         can: req.can,
         hasToken: Boolean(req.project.git_token_enc),
+      }),
+      { active: 'projects' },
+    );
+  });
+
+  r.get('/projects/:id/domains', load('project.view'), (req, res) => {
+    res.page(
+      `${req.project.name} · dominios y HTTPS`,
+      domainsView({
+        project: req.project,
+        csrfToken: res.locals.csrfToken,
+        can: req.can,
         https: { url: projects.httpsUrl(req.project), nodePort: ctx.config.ingressHttpsNodePort, ingressIp: ctx.config.ingressIp, host: projects.host(req.project) },
       }),
       { active: 'projects' },

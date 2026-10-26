@@ -68,6 +68,24 @@ export function createMetrics({ config, db, fetchImpl = (...a) => fetch(...a), t
       setSetting(db, 'price_ram_gb_hour', ramGbHour);
     },
 
+    /**
+     * Consumo del nodo con métricas de cAdvisor (id="/" = la máquina entera). Nunca lanza:
+     * cada valor queda en null si su consulta falla.
+     */
+    async cluster() {
+      const qs = {
+        cpuUsed: 'sum(rate(container_cpu_usage_seconds_total{id="/"}[5m]))',
+        cpuTotal: 'sum(machine_cpu_cores)',
+        memUsed: 'sum(container_memory_working_set_bytes{id="/"})',
+        memTotal: 'sum(machine_memory_bytes)',
+      };
+      const keys = Object.keys(qs);
+      const results = await Promise.allSettled(keys.map((k) => query(qs[k])));
+      const out = { available: results.some((r) => r.status === 'fulfilled') };
+      results.forEach((r, i) => (out[keys[i]] = r.status === 'fulfilled' ? r.value : null));
+      return out;
+    },
+
     /** Nunca lanza: si Prometheus no responde devuelve available=false y el error. */
     async forProject(project) {
       const qs = queriesFor(project.namespace);

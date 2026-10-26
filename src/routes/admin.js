@@ -4,7 +4,21 @@ import * as v from '../lib/validate.js';
 import { GLOBAL_ROLES } from '../lib/authz.js';
 import { setSetting } from '../db.js';
 import { temporaryPassword } from '../services/users.js';
-import { usersView, tempPasswordView, auditView } from '../views/admin.js';
+import { usersView, tempPasswordView, auditView, adminDashboardView } from '../views/admin.js';
+import { projectRow } from './projects.js';
+
+/** Agrupa el costo de los proyectos por dueño. Los nulos (sin Prometheus) no suman. */
+export function billingByOwner(rows) {
+  const by = new Map();
+  for (const r of rows) {
+    const key = r.project.owner_name || '(sin dueño)';
+    const b = by.get(key) || { owner: key, projects: 0, hour: null, last24h: null, projection30d: null };
+    b.projects++;
+    for (const k of ['hour', 'last24h', 'projection30d']) if (r.costs[k] !== null) b[k] = (b[k] ?? 0) + r.costs[k];
+    by.set(key, b);
+  }
+  return [...by.values()].sort((a, b) => (b.projection30d ?? -1) - (a.projection30d ?? -1));
+}
 
 /** Páginas del proveedor. Todas exigen admin.access (404 para el resto). */
 export function adminRoutes(ctx) {
@@ -29,6 +43,19 @@ export function adminRoutes(ctx) {
 
   // Cerrar sesiones tras desactivar o cambiar el rol: el cambio aplica en la siguiente petición.
   const kick = (user) => ctx.sessionStore?.destroyUser(user.id);
+
+  r.get('/admin', async (req, res) => {
+    const projects = ctx.projects.list(req.user);
+    const [rows, cluster] = await Promise.all([Promise.all(projects.map((p) => projectRow(ctx, p))), ctx.metrics.cluster()]);
+    const podsKnown = rows.filter((r) => !r.pods.error && !r.pods.dryRun);
+    const counts = {
+      users: ctx.db.prepare('SELECT COUNT(*) FROM users WHERE active = 1').pluck().get(),
+      projects: projects.length,
+      pods: podsKnown.length ? podsKnown.reduce((n, r) => n + r.pods.total, 0) : null,
+      failed24h: ctx.db.prepare("SELECT COUNT(*) FROM deployments WHERE status = 'failed' AND created_at >= datetime('now', '-1 day')").pluck().get(),
+    };
+    res.page('Panel admin', adminDashboardView({ counts, cluster, rows, billing: billingByOwner(rows), prices: ctx.metrics.prices() }), { active: 'admin' });
+  });
 
   r.get('/admin/users', (req, res) => listPage(req, res));
 

@@ -1,6 +1,7 @@
 import { html } from '../lib/html.js';
 import { csrfField } from './layout.js';
 import { RESOURCE_DEFAULTS } from '../services/projects.js';
+import { icon } from './icons.js';
 
 export const STATUS_LABELS = {
   created: 'creado',
@@ -28,27 +29,48 @@ export function desiredReplicas(p) {
   return p.autoscaling_enabled ? `${p.autoscaling_min}–${p.autoscaling_max} (HPA)` : String(p.replicas);
 }
 
+export const money = (n) => (n === null || n === undefined ? '—' : `$${n < 1 ? n.toFixed(4) : n.toFixed(2)}`);
+
+export const STACK_LABELS = { node: 'Node.js', php: 'PHP', laravel: 'Laravel', static: 'Estático', python: 'Python', dockerfile: 'Dockerfile' };
+
+function projectCard({ project: p, pods, url, stack, lastDeployment, costHour }) {
+  return html`<article class="card project-card">
+    <div class="row between">
+      <h2><a href="/projects/${p.id}">${p.name}</a></h2>
+      ${statusBadge(p.status)}
+    </div>
+    <a class="url mono" href="${url}" target="_blank" rel="noopener noreferrer">${icon('link')} ${url.replace(/^https?:\/\//, '')}</a>
+    <dl class="facts">
+      <div><dt>Stack</dt><dd>${stack ? STACK_LABELS[stack] || stack : html`<span class="muted">—</span>`}</dd></div>
+      <div><dt>Réplicas</dt><dd>${desiredReplicas(p)} ${podsCell(pods)}</dd></div>
+      <div><dt>Último despliegue</dt><dd>${lastDeployment
+        ? html`<a href="/deployments/${lastDeployment.id}">#${lastDeployment.id}</a> <small>${lastDeployment.created_at.slice(5, 16)}</small>`
+        : html`<span class="muted">nunca</span>`}</dd></div>
+      <div><dt>Costo / hora</dt><dd class="mono">${money(costHour)}</dd></div>
+    </dl>
+    <div class="actions">
+      <a class="btn btn-small" href="/projects/${p.id}/logs">${icon('logs')} Logs</a>
+      <a class="btn btn-small" href="/projects/${p.id}/deployments">${icon('rocket')} Despliegues</a>
+      ${p.member_role && p.member_role !== 'owner' ? html`<span class="badge" title="Tu rol en el proyecto">${p.member_role}</span>` : ''}
+    </div>
+  </article>`;
+}
+
 export function dashboardView({ rows, canCreate }) {
-  return html`<div class="row between">
+  return html`<div class="page-head">
       <h1>Proyectos</h1>
-      ${canCreate ? html`<a class="btn btn-primary" href="/projects/new">+ Nuevo proyecto</a>` : ''}
+      ${canCreate && rows.length ? html`<a class="btn btn-primary" href="/projects/new">${icon('plus')} Nuevo proyecto</a>` : ''}
     </div>
     ${rows.length === 0
-      ? html`<div class="card"><p class="muted">Aún no hay proyectos.${canCreate ? html` <a href="/projects/new">Crea el primero</a>.` : ''}</p></div>`
-      : html`<div class="card table-wrap"><table>
-          <thead><tr><th>Nombre</th><th>Estado</th><th>Pods</th><th>Réplicas</th><th>Origen</th><th>URL pública</th></tr></thead>
-          <tbody>
-          ${rows.map(
-            ({ project: p, pods, url }) => html`<tr>
-              <td><a href="/projects/${p.id}"><strong>${p.name}</strong></a><br><small class="mono">${p.namespace}</small></td>
-              <td>${statusBadge(p.status)}${p.current_tag ? html`<br><small class="mono">${p.current_tag}</small>` : ''}</td>
-              <td>${podsCell(pods)}</td>
-              <td>${desiredReplicas(p)}</td>
-              <td>${p.source === 'git' ? html`git <small class="mono">${p.branch}</small>` : 'zip'}</td>
-              <td><a href="${url}" rel="noopener noreferrer" target="_blank" class="mono">${url}</a></td>
-            </tr>`,
-          )}
-          </tbody></table></div>`}`;
+      ? html`<section class="card empty">
+          ${icon('rocket')}
+          <h2>Aún no tienes proyectos</h2>
+          ${canCreate
+            ? html`<p>Sube un .zip o conecta un repositorio git y lo publicamos en su propio subdominio, con HTTPS y bases de datos opcionales.</p>
+              <a class="btn btn-primary" href="/projects/new">${icon('plus')} Crear mi primer proyecto</a>`
+            : html`<p>Cuando alguien te invite a un proyecto aparecerá aquí.</p>`}
+        </section>`
+      : html`<div class="cards">${rows.map(projectCard)}</div>`}`;
 }
 
 function resourceFields(values) {
@@ -69,7 +91,7 @@ export const PROJECT_PRESETS = [
 
 export function newProjectView({ csrfToken, values = {}, error, domain }) {
   const src = values.source || 'zip';
-  return html`<h1>Nuevo proyecto</h1>
+  return html`<div class="page-head"><h1>Nuevo proyecto</h1></div>
   <div class="card row">
     <span class="muted">Plantilla:</span>
     ${PROJECT_PRESETS.map((t) => html`<button type="button" class="btn btn-small" data-preset-port="${t.port}" data-preset-env="${t.env}">${t.label}</button>`)}
@@ -125,20 +147,24 @@ export const PROJECT_TABS = [
   ['deployments', 'Despliegues'],
   ['env', 'Variables'],
   ['databases', 'Bases de datos'],
-  ['logs', 'Logs'],
-  ['settings', 'Escalado y ajustes'],
-  ['metrics', 'Métricas y costos'],
-  ['webhook', 'Webhook'],
+  ['domains', 'Dominios y HTTPS'],
+  ['metrics', 'Métricas'],
   ['members', 'Miembros'],
   ['activity', 'Actividad', 'project.audit'],
+  ['settings', 'Ajustes'],
 ];
 
 export function projectHeader(project, active, tabs = PROJECT_TABS) {
-  return html`<div class="row between">
+  return html`<div class="page-head">
       <h1>${project.name} ${statusBadge(project.status)}</h1>
+      <div class="row">
+        <a class="btn btn-small" href="/projects/${project.id}/logs">${icon('logs')} Logs</a>
+      </div>
     </div>
-    <nav class="tabs">
-      ${tabs.filter(([, , action]) => !action || project.can?.(action)).map(([path, label]) => html`<a href="/projects/${project.id}${path ? '/' + path : ''}" class="${active === path ? 'active' : ''}">${label}</a>`)}
+    <nav class="tabs" aria-label="Secciones del proyecto">
+      ${tabs
+        .filter(([, , action]) => !action || project.can?.(action))
+        .map(([path, label]) => html`<a href="/projects/${project.id}${path ? '/' + path : ''}" class="${active === path ? 'active' : ''}" ${active === path ? html`aria-current="page"` : ''}>${label}</a>`)}
     </nav>`;
 }
 
@@ -200,7 +226,7 @@ export function projectOverviewView({ project: p, pods, url, ingressTest, csrfTo
   ${can('project.delete')
     ? html`<section class="card">
         <h2>Zona de peligro</h2>
-        <p class="muted">Elimina la release de Helm, el namespace <span class="mono">${p.namespace}</span> con todo su contenido, las imágenes y el historial.</p>
+        <p class="muted">Elimina la release de Helm, el namespace <span class="mono">${p.namespace}</span> con todo su contenido (incluidas las bases de datos), las imágenes y el historial.</p>
         <form method="post" action="/projects/${p.id}/delete" class="row" data-confirm="¿Eliminar ${p.name} definitivamente?">
           ${csrfField(csrfToken)}
           <input name="confirm_name" placeholder="Escribe ${p.name} para confirmar" required autocomplete="off">

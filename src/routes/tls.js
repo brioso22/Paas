@@ -8,7 +8,7 @@ export function tlsRoutes(ctx) {
   const { tls, projects, queue } = ctx;
   const r = Router();
   const load = (action) => withProject(ctx, action);
-  const back = (req, res) => res.redirect(`/projects/${req.project.id}/settings`);
+  const back = (req, res) => res.redirect(`/projects/${req.project.id}/domains`);
   const redeploy = (req) => queue.enqueue({ projectId: req.project.id, kind: 'config', triggeredBy: req.user.username, userId: req.user.id, ip: req.ip, tag: req.project.current_tag });
 
   async function issue(req, res) {

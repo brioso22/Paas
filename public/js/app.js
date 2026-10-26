@@ -4,10 +4,148 @@
 
   const csrf = () => document.querySelector('meta[name="csrf-token"]')?.content || '';
 
+  // --- Modal de confirmación (<dialog>), construido con DOM y textContent --------
+  function confirmDialog(message, { danger = true, okLabel = 'Confirmar' } = {}) {
+    return new Promise((resolve) => {
+      if (typeof HTMLDialogElement !== 'function') return resolve(window.confirm(message));
+      const dlg = document.createElement('dialog');
+      dlg.className = 'modal';
+      dlg.setAttribute('aria-labelledby', 'modal-title');
+      const h = document.createElement('h2');
+      h.id = 'modal-title';
+      h.textContent = danger ? 'Confirmar acción' : 'Confirmar';
+      const p = document.createElement('p');
+      p.textContent = message;
+      const row = document.createElement('div');
+      row.className = 'row';
+      const cancel = document.createElement('button');
+      cancel.type = 'button';
+      cancel.className = 'btn';
+      cancel.textContent = 'Cancelar';
+      const ok = document.createElement('button');
+      ok.type = 'button';
+      ok.className = danger ? 'btn btn-danger solid' : 'btn btn-primary';
+      ok.textContent = okLabel;
+      row.append(cancel, ok);
+      dlg.append(h, p, row);
+      document.body.appendChild(dlg);
+      const done = (v) => {
+        dlg.close();
+        dlg.remove();
+        resolve(v);
+      };
+      cancel.addEventListener('click', () => done(false));
+      ok.addEventListener('click', () => done(true));
+      dlg.addEventListener('cancel', (e) => (e.preventDefault(), done(false)));
+      dlg.showModal();
+      cancel.focus(); // en acciones destructivas el foco inicial va a la opción segura
+    });
+  }
+
   // Confirmación para formularios destructivos: <form data-confirm="¿Seguro?">
   document.addEventListener('submit', (ev) => {
-    const msg = ev.target.getAttribute('data-confirm');
-    if (msg && !window.confirm(msg)) ev.preventDefault();
+    const form = ev.target;
+    const msg = form.getAttribute('data-confirm');
+    if (!msg || form.dataset.confirmed === '1') return;
+    ev.preventDefault();
+    confirmDialog(msg, { okLabel: ev.submitter?.textContent?.trim() || 'Confirmar' }).then((yes) => {
+      if (!yes) return;
+      form.dataset.confirmed = '1';
+      if (form.requestSubmit) form.requestSubmit(ev.submitter || undefined);
+      else form.submit();
+    });
+  });
+
+  // --- Tema claro/oscuro: sistema → claro → oscuro, guardado en localStorage -----
+  document.addEventListener('click', (ev) => {
+    if (!ev.target.closest('[data-theme-toggle]')) return;
+    const root = document.documentElement;
+    const cur = root.getAttribute('data-theme');
+    const next = cur === null ? 'light' : cur === 'light' ? 'dark' : null;
+    if (next) root.setAttribute('data-theme', next);
+    else root.removeAttribute('data-theme');
+    try {
+      if (next) localStorage.setItem('paas-theme', next);
+      else localStorage.removeItem('paas-theme');
+    } catch {
+      /* sin almacenamiento: el cambio dura hasta recargar */
+    }
+    toast(next === 'light' ? 'Tema claro' : next === 'dark' ? 'Tema oscuro' : 'Tema del sistema', 'info');
+  });
+
+  // --- Menú lateral en móvil ---------------------------------------------------
+  document.addEventListener('click', (ev) => {
+    const btn = ev.target.closest('[data-nav-toggle]');
+    const sb = document.getElementById('sidebar');
+    if (!sb) return;
+    if (btn) {
+      const open = sb.classList.toggle('open');
+      btn.setAttribute('aria-expanded', String(open));
+      if (open) sb.querySelector('a')?.focus();
+    } else if (sb.classList.contains('open') && !ev.target.closest('#sidebar')) {
+      sb.classList.remove('open');
+      document.querySelector('[data-nav-toggle]')?.setAttribute('aria-expanded', 'false');
+    }
+  });
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key !== 'Escape') return;
+    const sb = document.getElementById('sidebar');
+    if (sb?.classList.contains('open')) {
+      sb.classList.remove('open');
+      document.querySelector('[data-nav-toggle]')?.focus();
+    }
+  });
+
+  // --- Toasts --------------------------------------------------------------------
+  function dismiss(el) {
+    el.classList.add('hide');
+    setTimeout(() => el.remove(), 260);
+  }
+  function toast(message, type = 'info') {
+    let box = document.querySelector('.toasts');
+    if (!box) {
+      box = document.createElement('div');
+      box.className = 'toasts';
+      box.setAttribute('aria-live', 'polite');
+      document.body.appendChild(box);
+    }
+    const el = document.createElement('div');
+    el.className = 'toast toast-' + type;
+    el.setAttribute('role', 'status');
+    const span = document.createElement('span');
+    span.textContent = message;
+    el.appendChild(span);
+    box.appendChild(el);
+    setTimeout(() => dismiss(el), 2500);
+  }
+  document.addEventListener('click', (ev) => {
+    const b = ev.target.closest('[data-dismiss]');
+    if (b) dismiss(b.closest('[data-toast]'));
+  });
+
+  // --- Validación visible: mensaje bajo el campo inválido --------------------------
+  document.addEventListener(
+    'invalid',
+    (ev) => {
+      const field = ev.target;
+      field.setAttribute('aria-invalid', 'true');
+      let msg = field.parentElement.querySelector(':scope > .field-error');
+      if (!msg) {
+        msg = document.createElement('span');
+        msg.className = 'field-error';
+        msg.id = 'err-' + Math.random().toString(36).slice(2, 9);
+        field.insertAdjacentElement('afterend', msg);
+        field.setAttribute('aria-describedby', msg.id);
+      }
+      msg.textContent = field.validationMessage;
+    },
+    true,
+  );
+  document.addEventListener('input', (ev) => {
+    const field = ev.target;
+    if (field.getAttribute?.('aria-invalid') !== 'true' || !field.checkValidity()) return;
+    field.removeAttribute('aria-invalid');
+    field.parentElement.querySelector(':scope > .field-error')?.remove();
   });
 
   // Copiar al portapapeles: <button data-copy="#id-del-input">
@@ -19,6 +157,7 @@
     try {
       await navigator.clipboard.writeText(el.value ?? el.textContent);
       flashText(btn, 'Copiado');
+      toast('Copiado al portapapeles', 'success');
     } catch {
       el.select?.();
     }
@@ -37,7 +176,7 @@
       btn.textContent = 'Revelar';
       return;
     }
-    if (!window.confirm('¿Mostrar el valor en pantalla? Asegúrate de que nadie más la está viendo.')) return;
+    if (!(await confirmDialog('¿Mostrar el valor en pantalla? Asegúrate de que nadie más está viendo tu pantalla.', { danger: false, okLabel: 'Mostrar' }))) return;
     const res = await fetch(btn.getAttribute('data-reveal-url'), {
       method: 'POST',
       headers: { 'x-csrf-token': csrf(), accept: 'application/json' },
@@ -144,6 +283,10 @@
   }
 
   document.addEventListener('DOMContentLoaded', () => {
+    // Los avisos de éxito/info se ocultan solos; los errores esperan a que se cierren.
+    document.querySelectorAll('[data-toast]').forEach((t) => {
+      if (!t.classList.contains('toast-error')) setTimeout(() => dismiss(t), 6000);
+    });
     syncSource();
     syncToggles();
     document.querySelectorAll('pre[data-stream]').forEach(attachStream);
