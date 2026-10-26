@@ -1,0 +1,14 @@
+# Configuración local con secretos
+.env
+.env.*
+!.env.example
+
+# Datos en tiempo de ejecución
+data/
+workspaces/
+examples/dist/
+
+node_modules/
+npm-debug.log*
+coverage/
+.DS_Store
